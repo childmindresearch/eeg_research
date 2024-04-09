@@ -15,7 +15,7 @@
 [![Build](https://github.com/childmindresearch/template-python-repository/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/childmindresearch/template-python-repository/actions/workflows/test.yaml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/childmindresearch/template-python-repository/branch/main/graph/badge.svg?token=22HWWFWPW5)](https://codecov.io/gh/childmindresearch/template-python-repository)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-![stability-stable](https://img.shields.io/badge/stability-stable-green.svg)
+![stability-stable](https://img.shields.io/badge/stability-unstable-red.svg)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/childmindresearch/template-python-repository/blob/main/LICENSE)
 [![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/template-python-repository)
 
