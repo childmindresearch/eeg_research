@@ -1,7 +1,7 @@
 [![DOI](https://zenodo.org/badge/657341621.svg)](https://zenodo.org/doi/10.5281/zenodo.10383685)
 # Todo
 
-- [ ] Run `setup_template.py` to initialize the repository.
+- [x] Run `setup_template.py` to initialize the repository.
 - [ ] Replace the content of this `README.md` with details specific to your project.
 - [ ] Install the `pre-commit` hooks to ensure code quality on each commit.
 - [ ] Revise SECURITY.md to reflect supported versions or remove it if not applicable.
@@ -12,12 +12,12 @@
 
 # EEG research
 
-[![Build](https://github.com/childmindresearch/template-python-repository/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/childmindresearch/template-python-repository/actions/workflows/test.yaml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/childmindresearch/template-python-repository/branch/main/graph/badge.svg?token=22HWWFWPW5)](https://codecov.io/gh/childmindresearch/template-python-repository)
+[![Build](https://github.com/childmindresearch/eeg_research/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/childmindresearch/eeg_research/actions/workflows/test.yaml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/childmindresearch/eeg_research/branch/main/graph/badge.svg?token=22HWWFWPW5)](https://codecov.io/gh/childmindresearch/eeg_research)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 ![stability-stable](https://img.shields.io/badge/stability-experimental-red.svg)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/childmindresearch/template-python-repository/blob/main/LICENSE)
-[![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/template-python-repository)
+[![LGPL--3.0 License](https://img.shields.io/badge/license-LGPL--3.0-blue.svg)](https://github.com/childmindresearch/eeg_research/blob/main/LICENSE)
+[![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/eeg_research)
 
 The purpose of this monorepository is to group all software tools and pipelines related to EEG (experiment, cleaning, analysis etc.)
 

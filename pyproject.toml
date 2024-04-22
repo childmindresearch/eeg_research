@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "app-name"
+name = "eeg_research"
 version = "0.1.0"
-description = "A beautiful description."
-authors = ["Reinder Vos de Wael <reinder.vosdewael@childmind.org>"]
+description = "All tools and pipelines developed for eeg research"
+authors = ["Samuel Louviot <sam.louvito@gmail.com>"]
 license = "LGPL-2.1"
 readme = "README.md"
-packages = [{include = "APP_NAME", from = "src"}]
+packages = [{include = "eeg_research", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "~3.11"
