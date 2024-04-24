@@ -146,7 +146,9 @@ def build_layout(reading_root: str, indexer: bids.BIDSLayoutIndexer) -> bids.BID
     return layout
 
 
-def get_layout(reading_root: str, entities: dict[str, str]) -> bids.BIDSLayout:
+def get_layout(
+    reading_root: str, entities: dict[str, str | list[str]]
+) -> bids.BIDSLayout:
     """Create and return a BIDSLayout object based on given reading_root and entities.
 
     As of April 2024, BIDSLayoutIndexer's **filters argument is not working as expected.
@@ -234,7 +236,7 @@ def select_scripts_interactively(preselection: list[int] = []) -> list[str]:
 def run_interactive_menu(
     reading_root: str,
     layout: bids.BIDSLayout,
-    selected_entities: dict[str, str],
+    selected_entities: dict[str, str | list[str]],
 ) -> tuple[list[str], list[str]]:
     """Runs an interactive menu for selecting entities.
 

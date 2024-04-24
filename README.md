@@ -20,4 +20,3 @@
 [![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/eeg_research)
 
 The purpose of this monorepository is to group all software tools and pipelines related to EEG (experiment, cleaning, analysis etc.)
-
