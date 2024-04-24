@@ -10,7 +10,7 @@ from bids import BIDSLayout
 import eeg_research.cli.pipelines.eeg_fmri_cleaning as script
 
 
-def run_parse_arguments_test(argv: list[str], expected: dict[str, any]) -> None:
+def run_parse_arguments_test(argv: list[str], expected: dict) -> None:
     """Helper function to run parse_arguments tests."""
     sys.argv = argv
     args = script.parse_arguments()
@@ -18,7 +18,7 @@ def run_parse_arguments_test(argv: list[str], expected: dict[str, any]) -> None:
         assert getattr(args, key) == value
 
 
-def run_test(option: str, value: str, expected: dict[str, any]) -> None:
+def run_test(option: str, value: str, expected: dict) -> None:
     """Helper function to run tests for an option with a given value."""
     run_parse_arguments_test(
         ["prog", "--root", "/root/path", f"--{option}", value, "--gradient"],
