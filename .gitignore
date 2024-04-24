@@ -162,4 +162,10 @@ cython_debug/
 .idea/
 
 #MacOs file
-.DS_Store
+**/.DS_Store
+
+# vscode
+.vscode/
+
+# data
+data/

@@ -9,6 +9,12 @@ packages = [{include = "eeg_research", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "~3.11"
+simple-term-menu = "^1.6.4"
+pybids = "^0.16.4"
+mne = "^1.7.0"
+numpy = "^1.26.4"
+scipy = "^1.13.0"
+matplotlib = "^3.8.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
