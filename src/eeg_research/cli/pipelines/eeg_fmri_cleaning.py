@@ -279,7 +279,7 @@ def create_entities(args: argparse.Namespace, layout: bids.BIDSLayout) -> dict:
     }
 
     # Add other entities
-    entities.update({"desc": args.description})
+    entities.update({"description": args.description})
 
     return entities
 
