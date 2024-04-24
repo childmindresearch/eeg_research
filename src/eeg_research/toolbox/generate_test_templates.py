@@ -41,8 +41,14 @@ def create_test_file(py_file: str, relative_path: str) -> None:
     test_subdir = os.path.join(test_dir, relative_path)
     os.makedirs(test_subdir, exist_ok=True)
     test_file = os.path.join(test_subdir, f"test_{base_name}.py")
+    if os.path.exists(test_file):
+        print(f"Test file {os.path.relpath(test_file, cwd)} already exists. Skipping.")
+        return
     with open(test_file, "w") as f:
-        f.write(f"""import pytest
+        f.write(f"""# ruff: noqa
+# remove the first line after populating the file
+
+import pytest
 
 from {package_name}.{relative_path.replace('/', '.')}.{base_name} import *
 
@@ -50,7 +56,7 @@ from {package_name}.{relative_path.replace('/', '.')}.{base_name} import *
 def test_example():
     assert True
         """)
-    print(f"Created test file: {test_file}")
+    print(f"Created test file: {os.path.relpath(test_file, cwd)}")
 
 
 def main() -> None:
@@ -65,7 +71,7 @@ def main() -> None:
                 and file != "__init__.py"
             ):
                 relative_path = os.path.relpath(root, src_dir)
-                print(f"Found Python file: {file}")
+                print(f"Found Python file: {os.path.join(relative_path, file)}")
                 create_test_file(file, relative_path)
 
 
