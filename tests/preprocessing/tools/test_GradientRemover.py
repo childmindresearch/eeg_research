@@ -3,7 +3,7 @@
 
 import pytest
 
-from eeg_research.preprocessing.tools.GradientRemover import *
+import eeg_research.preprocessing.tools.GradientRemover as script
 
 
 def test_example():

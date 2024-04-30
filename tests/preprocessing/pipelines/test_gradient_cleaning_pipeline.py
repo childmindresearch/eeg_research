@@ -3,8 +3,7 @@
 
 import pytest
 
-from eeg_research.preprocessing.pipelines.gradient_cleaning import *
-
+import eeg_research.preprocessing.pipelines.gradient_cleaning_pipeline as script
 
 def test_example():
     assert True

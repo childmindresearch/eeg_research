@@ -3,7 +3,7 @@
 
 import pytest
 
-from eeg_research.cli.tools.interactive_menu import *
+import eeg_research.cli.tools.interactive_menu as script
 
 
 def test_example():

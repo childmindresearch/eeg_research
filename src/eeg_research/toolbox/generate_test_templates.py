@@ -1,79 +1,80 @@
-"""This script generates test templates for all Python files in the repo.
+"""This script contains functions for generating test templates for Python scripts."""
 
-The generated test templates follow the naming convention of 'test_<filename>.py'
-and are saved in a specified test directory.
+import argparse
+from pathlib import Path
+from typing import Generator
 
-The main function of this script walks through the source directory, identifies Python
-files that do not start with 'test_', and creates a corresponding test template for
-each file.
-
-Usage:
-    1. Set the source directory path in the 'src_dir' variable.
-    2. Set the test directory path in the 'test_dir' variable.
-    3. Run the script.
-
-Note: This script assumes that the source directory contains Python files that need to
-be tested.
-
-Example:
-    If the source directory contains a file named 'my_module.py', running this script
-    will generate a test template named 'test_my_module.py' in the test directory.
-
-"""
-
-import os
-
-cwd = os.getcwd()
-package_name = "eeg_research"
-src_dir = os.path.join(cwd, "src/", package_name)
-test_dir = os.path.join(cwd, "tests")
+TEST_FILE_TEMPLATE = (
+    "# ruff: noqa\n"
+    "# remove the first line after populating the file\n\n"
+    "import pytest\n\n"
+    "import {package}.{rel_path}.{base_name} as script\n\n"
+    "def test_example():\n"
+    "    assert True\n"
+)
 
 
-def validate_path(path: str) -> None:
+def validate_dir_path(path: Path) -> None:
     """Validate a directory path."""
-    if not os.path.isdir(path):
+    if not path.is_dir():
         raise ValueError(f"{path} is not a valid directory")
 
 
-def create_test_file(py_file: str, relative_path: str) -> None:
+def create_test_file(script: Path, test_dir: Path, src_dir: Path, package: str) -> None:
     """Create a test template for a Python file."""
-    base_name = os.path.basename(py_file).replace(".py", "")
-    test_subdir = os.path.join(test_dir, relative_path)
-    os.makedirs(test_subdir, exist_ok=True)
-    test_file = os.path.join(test_subdir, f"test_{base_name}.py")
-    if os.path.exists(test_file):
-        print(f"Test file {os.path.relpath(test_file, cwd)} already exists. Skipping.")
+    base_name = script.stem
+    test_subdir = test_dir / script.parent.relative_to(src_dir)
+    test_subdir.mkdir(parents=True, exist_ok=True)
+    test_file = test_subdir / f"test_{base_name}.py"
+    if test_file.exists():
+        print(f"A test file on path '{test_file}' already exists. " "Skipping.")
         return
-    with open(test_file, "w") as f:
-        f.write(f"""# ruff: noqa
-# remove the first line after populating the file
-
-import pytest
-
-from {package_name}.{relative_path.replace('/', '.')}.{base_name} import *
-
-
-def test_example():
-    assert True
-        """)
-    print(f"Created test file: {os.path.relpath(test_file, cwd)}")
+    with test_file.open("w") as f:
+        formatted_template = TEST_FILE_TEMPLATE.format(
+            package=package,
+            rel_path=str(script.parent.relative_to(src_dir)).replace("/", "."),
+            base_name=base_name,
+        )
+        f.write(formatted_template)
+    print(f"Created test file: {test_file}")
 
 
-def main() -> None:
-    """Main function."""
-    validate_path(src_dir)
-    validate_path(test_dir)
-    for root, _, files in os.walk(src_dir):
-        for file in files:
-            if (
-                file.endswith(".py")
-                and not file.startswith("test_")
-                and file != "__init__.py"
-            ):
-                relative_path = os.path.relpath(root, src_dir)
-                print(f"Found Python file: {os.path.join(relative_path, file)}")
-                create_test_file(file, relative_path)
+def find_python_scripts(src_dir: Path) -> Generator[Path, None, None]:
+    """Yield all Python scripts in the source directory."""
+    for script in src_dir.rglob("*.py"):
+        if not script.name.startswith("test_") and script.name != "__init__.py":
+            yield script
+
+
+def main(package: str, src_dir: Path, test_dir: Path) -> None:
+    """Main function that generates test templates for all .py files."""
+    src_dir = src_dir / package
+    validate_dir_path(src_dir)
+    validate_dir_path(test_dir)
+    for script in find_python_scripts(src_dir):
+        print(f"Found Python file: {script.relative_to(src_dir)}")
+        create_test_file(script, test_dir, src_dir, package)
+
+
+def parse_arguments() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Generate test templates for Python scripts."
+    )
+    parser.add_argument("--package", help="The package name.", default="eeg_research")
+    parser.add_argument(
+        "--src_dir",
+        help="The source directory containing the Python scripts.",
+        default="src",
+    )
+    parser.add_argument(
+        "--test_dir",
+        help="The directory where the test templates will be created.",
+        default="tests",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args.package, Path(args.src_dir), Path(args.test_dir))
