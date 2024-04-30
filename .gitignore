@@ -172,3 +172,6 @@ data/
 
 # experiments
 experiments/
+
+# History files
+.history
