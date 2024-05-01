@@ -175,3 +175,7 @@ experiments/
 
 # History files
 .history
+
+# EEG files
+*.mff
+*.zip
