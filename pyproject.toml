@@ -8,13 +8,18 @@ readme = "README.md"
 packages = [{include = "eeg_research", from = "src"}]
 
 [tool.poetry.dependencies]
-python = "~3.11"
+python = "~3.12"
 simple-term-menu = "^1.6.4"
 pybids = "^0.16.4"
 mne = "^1.7.0"
 numpy = "^1.26.4"
 scipy = "^1.13.0"
 matplotlib = "^3.8.4"
+asrpy = "^0.0.3"
+pyprep = "^0.4.3"
+neurokit2 = "^0.2.7"
+pybv = "^0.7.5"
+eeglabio = "^0.0.2.post4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.0"
@@ -22,6 +27,7 @@ mypy = "^1.10.0"
 pre-commit = "^3.7.0"
 pytest-cov = "^5.0.0"
 ruff = "^0.4.2"
+ipykernel = "^6.29.4"
 
 [tool.poetry.group.docs.dependencies]
 pdoc = "^14.4.0"
@@ -36,6 +42,7 @@ testpaths = [
 
 [tool.mypy]
 ignore_missing_imports = true
+exclude = "^data/"
 
 [tool.ruff]
 exclude = [
@@ -65,6 +72,10 @@ line-length = 88
 indent-width = 4
 src = ["src"]
 target-version = "py311"
+extend-exclude = [
+  "*.ipynb",
+  "src/eeg_research/labs"
+]
 
 [tool.ruff.lint]
 select = ["ANN", "D", "E", "F", "I"]
