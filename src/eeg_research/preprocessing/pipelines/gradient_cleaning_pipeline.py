@@ -30,7 +30,7 @@
 import mne
 import numpy as np
 
-from eeg_research.preprocessing.tools.GradientRemover import GradientRemover
+from eeg_research.preprocessing.tools.gradient_remover import GradientRemover
 
 
 def extract_gradient_trigger_name(

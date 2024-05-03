@@ -8,7 +8,7 @@ TEST_FILE_TEMPLATE = (
     "# ruff: noqa\n"
     "# remove the first line after populating the file\n\n"
     "import pytest\n\n"
-    "import {package}.{rel_path}.{base_name} as script\n\n"
+    "import {package}.{rel_path}.{base_name} as script\n\n\n"
     "def test_example():\n"
     "    assert True\n"
 )

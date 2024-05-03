@@ -3,7 +3,7 @@
 
 import pytest
 
-import eeg_research.preprocessing.pipelines.bcg_cleaning_pipeline as script
+import eeg_research.simulators.decorators as script
 
 
 def test_example():

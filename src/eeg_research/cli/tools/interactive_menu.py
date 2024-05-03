@@ -27,7 +27,6 @@
 
 """GENERAL DOCUMENTATION HERE."""
 
-# Import necessary libraries
 import re
 
 import bids

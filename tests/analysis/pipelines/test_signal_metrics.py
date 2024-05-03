@@ -3,8 +3,7 @@
 
 import pytest
 
-import eeg_research.preprocessing.pipelines.bcg_cleaning_pipeline as script
-
+import eeg_research.analysis.pipelines.signal_metrics as script
 
 def test_example():
     assert True
