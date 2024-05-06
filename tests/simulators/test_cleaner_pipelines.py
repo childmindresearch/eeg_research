@@ -21,6 +21,7 @@ def dataset_structure() -> Generator[simulated_data.DummyDataset, None, None]:
     """Fixture to create a dataset object."""
     cwd = Path.cwd()
     output_dir = cwd.joinpath("data", "outputs")
+    output_dir.mkdir(parents=True, exist_ok=True)
     dataset_object = simulated_data.DummyDataset(root=output_dir, flush=False)
     yield dataset_object
 
@@ -30,6 +31,7 @@ def light_dataset() -> Generator[simulated_data.DummyDataset, None, None]:
     """Fixture to create a light dataset object."""
     cwd = Path.cwd()
     output_dir = cwd.joinpath("data", "outputs")
+    output_dir.mkdir(parents=True, exist_ok=True)
     dataset_object = simulated_data.DummyDataset(
         root=output_dir, task="test", flush=True
     )
@@ -42,6 +44,7 @@ def heavy_dataset() -> Generator[script.CleanerPipelines, None, None]:
     """Fixture to create a heavy dataset object and run the pipeline."""
     cwd = Path.cwd()
     output_dir = cwd.joinpath("data", "outputs")
+    output_dir.mkdir(parents=True, exist_ok=True)
     dataset_object = simulated_data.DummyDataset(root=output_dir, flush=True)
     dataset_object.create_eeg_dataset(
         fmt="eeglab",
