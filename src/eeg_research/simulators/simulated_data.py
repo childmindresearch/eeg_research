@@ -1,11 +1,10 @@
 """Simulate EEG data for testing purposes."""
 
 import json
-import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import Any
 
 import mne
 import neurokit2 as nk
@@ -22,8 +21,6 @@ from eeg_research.simulators.path_handler import DirectoryTree
 #       - EOG
 #       - gradient artifacts
 #       - BCG artifacts
-
-FunctionType = TypeVar("FunctionType", bound=Callable[..., Any])
 
 
 def simulate_light_eeg_data(
@@ -165,11 +162,11 @@ class DummyDataset:
         n_subjects: int = 1,
         n_sessions: int = 1,
         n_runs: int = 1,
-        task: Optional[str] = "test",
-        sessions_label_str: Optional[str] = None,
-        subjects_label_str: Optional[str] = None,
+        task: str = "test",
+        sessions_label_str: str | None = None,
+        subjects_label_str: str | None = None,
         data_folder: str = "RAW",
-        root: Optional[Union[str, os.PathLike]] = None,
+        root: str | Path | None = None,
         flush: bool = True,
     ) -> None:
         """Initialize the DummyDataset object.
@@ -188,7 +185,7 @@ class DummyDataset:
                 the subject label. Defaults to None.
             data_folder (str, optional): The location of the data
                 source (rawdata, derivatives). Defaults to "RAW".
-            root (str | os.PathLike, optional): The root directory to create
+            root (str | Path, optional): The root directory to create
                 the temporary dataset. If None, the dataset is created in the
                 temporary directory of the system. Defaults to None.
             flush (bool, optional): Whether to remove the temporary directory
@@ -232,6 +229,36 @@ class DummyDataset:
         self.root = Path(self.temporary_directory.name)
         self.bids_path = self.root.joinpath(self.data_folder)
 
+    def _create_participant_metadata(self) -> "DummyDataset":
+        """Create participant metadata for the dataset.
+
+        Returns:
+            DummyDataset: The DummyDataset object.
+        """
+        holder: dict[str, list[Any]] = {
+            "participant_id": [],
+            "sex": [],
+            "age": [],
+            "handedness": [],
+        }
+        for subject_number in range(1, self.n_subjects + 1):
+            holder["age"].append(np.random.randint(18, 60))
+            holder["sex"].append(np.random.choice(["M", "F"]))
+            holder["handedness"].append(
+                np.random.choice(["right", "left", "ambidextrous"])
+            )
+            holder["participant_id"].append(
+                self._generate_label(
+                    "subjects",
+                    label_number=subject_number,
+                    label_str_id=self.subjects_label_str,
+                )
+            )
+
+        self.participant_metadata = pd.DataFrame(holder)
+        self.subjects = self.participant_metadata["participant_id"].tolist()
+        return self
+
     def _add_participant_metadata(
         self, participant_id: str, age: int, sex: str, handedness: str
     ) -> None:
@@ -244,7 +271,7 @@ class DummyDataset:
             handedness (str): The handedness of the participant.
         """
         if not hasattr(self, "participant_metadata"):
-            self._create_participants_metadata()
+            self._create_participant_metadata()
 
         temp_df = pd.DataFrame(
             {
@@ -279,31 +306,6 @@ class DummyDataset:
 
         return self
 
-    def create_participants_metadata(self) -> "DummyDataset":
-        """Create participant metadata for the dataset.
-
-        Returns:
-            DummyDataset: The DummyDataset object.
-        """
-        holder = {"participant_id": [], "sex": [], "age": [], "handedness": []}
-        for subject_number in range(1, self.n_subjects + 1):
-            holder["age"].append(np.random.randint(18, 60))
-            holder["sex"].append(np.random.choice(["M", "F"]))
-            holder["handedness"].append(
-                np.random.choice(["right", "left", "ambidextrous"])
-            )
-            holder["participant_id"].append(
-                self._generate_label(
-                    "subjects",
-                    label_number=subject_number,
-                    label_str_id=self.subjects_label_str,
-                )
-            )
-
-        self.participant_metadata = pd.DataFrame(holder)
-        self.subjects = self.participant_metadata["participant_id"].tolist()
-        return self
-
     def _save_participant_metadata(self) -> None:
         """Save the participant metadata to a file."""
         saving_filename = self.bids_path.joinpath("participants.tsv")
@@ -313,7 +315,7 @@ class DummyDataset:
         self: "DummyDataset",
         label_type: str = "subjects",
         label_number: int = 1,
-        label_str_id: Optional[str] = None,
+        label_str_id: str | None = None,
     ) -> str:
         """Generate a BIDS compliant label.
 
@@ -337,7 +339,7 @@ class DummyDataset:
         label = f"{label_prefix}{label_str_id}{label_number:03d}"
         return label
 
-    def create_modality_agnostic_dir(self: "DummyDataset") -> List[Path]:
+    def create_modality_agnostic_dir(self: "DummyDataset") -> list[Path]:
         """Create multiple BIDS compliant folders.
 
         The BIDS structure requires the structure to be an iterative
@@ -371,11 +373,11 @@ class DummyDataset:
 
         return path_list
 
-    def _extract_entities_from_path(self, path: Union[str, os.PathLike]) -> str:
+    def _extract_entities_from_path(self, path: str | Path) -> dict[str, str]:
         """Extract the entities from a path.
 
         Args:
-            path (str | os.PathLike): The path to extract the label from.
+            path (str | Path): The path to extract the label from.
 
         Returns:
             str: The extracted label.
@@ -389,13 +391,13 @@ class DummyDataset:
 
         return entities
 
-    def _create_sidecar_json(self, eeg_filename: Union[str, os.PathLike]) -> None:
+    def _create_sidecar_json(self, eeg_filename: str | Path) -> None:
         """Create a sidecar JSON file for the EEG data.
 
         Args:
-            eeg_filename (str | os.PathLike): The EEG data file name.
+            eeg_filename (str | Path): The EEG data file name.
         """
-        json_filename = Path(os.path.splitext(eeg_filename)[0])
+        json_filename = Path(eeg_filename).with_suffix("")
         json_filename = json_filename.with_suffix(".json")
 
         json_content = {
@@ -433,9 +435,7 @@ class DummyDataset:
             "Authors": ["Jane Doe", "John Doe"],
         }
 
-        with open(
-            os.path.join(self.bids_path, "dataset_description.json"), "w"
-        ) as desc_file:
+        with open(self.bids_path / "dataset_description.json", "w") as desc_file:
             json.dump(self.dataset_description, desc_file, indent=4)
 
     def flush(self, check: bool = True) -> None:
@@ -455,15 +455,15 @@ class DummyDataset:
             tree.print_tree()
 
             shutil.rmtree(self.root, ignore_errors=True, onerror=None)
-            post_removal_checker = os.path.exists(self.root)
+            post_removal_checker = self.root.exists()
             if post_removal_checker:
                 print("The tree was not removed.")
             else:
                 print("The tree was successfully removed.")
 
     def create_eeg_dataset(
-        self, fmt: str = "brainvision", light: bool = False, **kwargs: dict
-    ) -> str:
+        self, fmt: str = "brainvision", light: bool = False, **kwargs: int | list | dict
+    ) -> "DummyDataset":
         """Create temporary BIDS dataset.
 
         Create a dummy BIDS dataset for EEG data with multiple subjects, sessions,
@@ -474,14 +474,14 @@ class DummyDataset:
                 Defaults to 'brainvision'.
             light (bool, optional): Whether to simulate light EEG data.
                 Defaults to False.
-            **kwargs (dict): The parameters to pass to the EEG data simulation function.
+            kwargs (int | list | dict): The parameters to pass to the EEG data
 
         Returns:
-            str: The path of the temporary BIDS dataset.
+            DummyDataset: : The temporary DummyDataset object.
         """
         path_list = self.create_modality_agnostic_dir()
         self._create_dataset_description()
-        self.create_participants_metadata()
+        self._create_participant_metadata()
 
         for path in path_list:
             for run_number in range(1, self.n_runs + 1):
@@ -515,9 +515,9 @@ class DummyDataset:
                 eeg_absolute_filename = eeg_directory.joinpath(eeg_filename)
 
                 if light:
-                    raw = simulate_light_eeg_data(**kwargs)
+                    raw = simulate_light_eeg_data(**kwargs)  # type: ignore
                 else:
-                    raw = simulate_eeg_data(**kwargs)
+                    raw = simulate_eeg_data(**kwargs)  # type: ignore
 
                 mne.export.export_raw(
                     fname=eeg_absolute_filename, raw=raw, fmt=fmt, overwrite=True

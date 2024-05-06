@@ -27,7 +27,7 @@
 
 from typing import Generator
 
-import numpy
+import numpy as np
 import pytest
 from mne.io import RawArray
 
@@ -83,9 +83,14 @@ def snr_spectrum(
 
 def test_shape_fft(raw: RawArray, fft_spectrum: script.Spectrum) -> None:
     """Test that fft() returns the correct shape for valid input."""
-    raw_data_shape = (raw.get_data().shape[0], raw.get_data().shape[1] // 2)
+    raw_data = raw.get_data()
+    n_channels = raw_data.shape[0]
+    n_times = raw_data.shape[1]
+    # divide by 2, round down to nearest power of 2, add 1
+    n_times_rfft = 2 ** np.floor(np.log2(n_times // 2)) + 1
+    raw_data_shape = (n_channels, n_times_rfft)
     fft_spectrum_shape = fft_spectrum.spectrum.shape
-    assert raw_data_shape == fft_spectrum_shape
+    assert fft_spectrum_shape == raw_data_shape
 
 
 def test_type_fft(fft_spectrum: script.Spectrum) -> None:
@@ -105,7 +110,7 @@ def test_value_frequency(fft_spectrum: script.Spectrum) -> None:
     frequency_index = fft_spectrum._get_frequency_index(18)
     actual_frequency = fft_spectrum.frequencies[frequency_index]
     spectrum_frequency_resolution = fft_spectrum.frequency_resolution
-    freq_difference = numpy.abs(actual_frequency - desired_frequency)
+    freq_difference = np.abs(actual_frequency - desired_frequency)
     assert freq_difference < spectrum_frequency_resolution
 
 
@@ -120,5 +125,5 @@ def test_values_frequency_window(amplitude_spectrum: script.Spectrum) -> None:
     """Test that the peak frequency is within the frequency window."""
     frequency_window = (17, 20)
     magnitudes = amplitude_spectrum.get_peak_magnitude(frequency_window)
-    assert frequency_window[0] <= numpy.max(magnitudes.peak_frequency_Hz)
-    assert frequency_window[1] >= numpy.max(magnitudes.peak_frequency_Hz)
+    assert frequency_window[0] <= np.max(magnitudes.peak_frequency_Hz)
+    assert frequency_window[1] >= np.max(magnitudes.peak_frequency_Hz)

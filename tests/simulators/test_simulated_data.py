@@ -20,7 +20,7 @@ def raw_data() -> mne.io.RawArray:
 def testing_path() -> Path:
     """Fixture to create an output directory for testing purposes."""
     cwd = Path.cwd()
-    output_dir = cwd.joinpath("data", "temp")
+    output_dir = cwd.joinpath("data", "outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
 
@@ -61,7 +61,7 @@ def test_dummy_dataset_called_with_zeros() -> None:
 def test_participant_metadata() -> None:
     """Test that the function returns a DataFrame with the participant metadata."""
     dataset = script.DummyDataset(n_subjects=5)
-    dataset.create_participants_metadata()
+    dataset._create_participant_metadata()
     assert isinstance(dataset.participant_metadata, pd.DataFrame)
     assert dataset.participant_metadata.shape[0] == 5
     nan_mask = dataset.participant_metadata.isna()
@@ -72,7 +72,7 @@ def test_participant_metadata() -> None:
 def test_add_participant_metadata() -> None:
     """Test that the function adds a new participant to the participant metadata."""
     dataset = script.DummyDataset(n_subjects=5)
-    dataset.create_participants_metadata()
+    dataset._create_participant_metadata()
     dataset._add_participant_metadata(
         participant_id="sub-06", age=26, sex="M", handedness="R"
     )
@@ -159,12 +159,11 @@ def test_method_create_eeg_dataset(testing_path: Path) -> None:
 def test_method_create_eeg_dataset_annotations(testing_path: Path) -> None:
     """Test that the method creates an EEG dataset with annotations."""
     dataset = script.DummyDataset(root=testing_path)
-    dataset.create_eeg_dataset(
-        fmt="eeglab",
-        light=False,
-        duration=10,
-        events_kwargs=dict(name="testing_event", number=3, start=2, stop=8),
-    )
+    kwargs: dict[str, int | list | dict] = {
+        "duration": 10,
+        "events_kwargs": dict(name="testing_event", number=3, start=2, stop=8),
+    }
+    dataset.create_eeg_dataset(fmt="eeglab", light=False, **kwargs)
 
     for content in testing_path.iterdir():
         if "temporary_directory_generated_" in content.name:

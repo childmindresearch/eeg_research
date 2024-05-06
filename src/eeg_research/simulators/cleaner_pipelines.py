@@ -57,7 +57,7 @@ class CleanerPipelines:
         self.BIDSFile = BIDSFile
         self.entities = BIDSFile.get_entities()
         self.rawdata_path = Path(BIDSFile.path)
-        self.process_history = list()
+        self.process_history: list[str] = list()
         self._make_derivatives_path()
 
     def _task_is(self, task_name: str) -> bool:
@@ -122,7 +122,7 @@ class CleanerPipelines:
             return self
         else:
             raise ValueError(
-                """The process path is not defined. 
+                """The process path is not defined.
                 Run the method _make_process_path first."""
             )
 
@@ -143,7 +143,7 @@ class CleanerPipelines:
             return self
         else:
             raise ValueError(
-                """The process path is not defined. 
+                """The process path is not defined.
                 Run the method _make_subject_session_path first."""
             )
 

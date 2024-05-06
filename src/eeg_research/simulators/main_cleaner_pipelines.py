@@ -30,10 +30,6 @@ import bids
 
 from eeg_research.simulators.cleaner_pipelines import CleanerPipelines
 
-parser = argparse.ArgumentParser(description="Run the cleaning pipelines")
-parser.add_argument("--path", type=str, help="Path to the BIDS dataset")
-args = parser.parse_args()
-
 
 def run_cbin_cleaner(cleaner: CleanerPipelines) -> CleanerPipelines:
     """Run the cbin cleaner pipeline."""
@@ -60,8 +56,12 @@ def run_cbin_cleaner_pyprep_asr(cleaner: CleanerPipelines) -> CleanerPipelines:
     return cleaner
 
 
-def main(reading_path: str) -> None:
+def main() -> None:
     """Run the cleaning pipelines."""
+    parser = argparse.ArgumentParser(description="Run the cleaning pipelines")
+    parser.add_argument("--path", type=str, help="Path to the BIDS dataset")
+    args = parser.parse_args()
+    reading_path = args.path
     layout = bids.BIDSLayout(reading_path)
     file_list = layout.get(extension=".set")
 
@@ -87,4 +87,4 @@ def main(reading_path: str) -> None:
 
 
 if __name__ == "__main__":
-    main(args.path)
+    main()
