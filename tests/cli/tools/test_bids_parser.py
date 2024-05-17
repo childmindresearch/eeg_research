@@ -30,7 +30,7 @@ def test_bids_parser_init(mocker: Any) -> None:
 def test_bids_parser_set_reading_root(mocker: Any) -> None:
     """Test the _set_reading_root method of the BIDSParser class."""
     args = mocker.MagicMock()
-    args.root = "data/bids-examples/eeg_ds000117"
+    args.root = "bids-examples/eeg_ds000117"
     args.datafolder = ""
 
     mocker.patch.object(script.BIDSParser, "_parse_arguments", return_value=args)
@@ -40,7 +40,7 @@ def test_bids_parser_set_reading_root(mocker: Any) -> None:
 
     result = parser._set_reading_root()
 
-    assert result == Path("data/bids-examples/eeg_ds000117/")
+    assert result == Path("bids-examples/eeg_ds000117/")
 
 
 def run_bids_parser_parse_arguments_test(argv: list[str], expected: dict) -> None:
@@ -58,7 +58,7 @@ def run_test(option: str, value: str, expected: dict) -> None:
         [
             "prog",
             "--root",
-            "data/bids-examples/eeg_ds000117",
+            "bids-examples/eeg_ds000117",
             f"--{option}",
             value,
             "--gradient",
@@ -76,9 +76,9 @@ def test_bids_parser_parse_arguments_root_required() -> None:
 def test_bids_parser_parse_arguments_default_values() -> None:
     """Test that the default values are set correctly."""
     run_bids_parser_parse_arguments_test(
-        ["prog", "--root", "data/bids-examples/eeg_ds000117", "--gradient"],
+        ["prog", "--root", "bids-examples/eeg_ds000117", "--gradient"],
         {
-            "root": "data/bids-examples/eeg_ds000117",
+            "root": "bids-examples/eeg_ds000117",
             "datafolder": None,
             "subject": None,
             "session": None,
@@ -102,7 +102,7 @@ def test_bids_parser_parse_arguments_all_values() -> None:
         [
             "prog",
             "--root",
-            "data/bids-examples/eeg_rest_fmri",
+            "bids-examples/eeg_rest_fmri",
             "--datafolder",
             "derivatives",
             "--subject",
@@ -127,7 +127,7 @@ def test_bids_parser_parse_arguments_all_values() -> None:
             "--qc",
         ],
         {
-            "root": "data/bids-examples/eeg_rest_fmri",
+            "root": "bids-examples/eeg_rest_fmri",
             "datafolder": "derivatives",
             "subject": "1",
             "session": "1",
@@ -149,7 +149,7 @@ def test_bids_parser_parse_arguments_no_flags() -> None:
     """Test case for the parse_arguments function when no flags are provided."""
     with pytest.raises(SystemExit):
         run_bids_parser_parse_arguments_test(
-            ["prog", "--root", "data/bids-examples/eeg_ds000117"], {}
+            ["prog", "--root", "bids-examples/eeg_ds000117"], {}
         )
 
 
@@ -176,7 +176,7 @@ def test_bids_parser_parse_arguments_description() -> None:
         [
             "prog",
             "--root",
-            "data/bids-examples/eeg_ds000117",
+            "bids-examples/eeg_ds000117",
             "--description",
             "desc",
             "--gradient",
@@ -190,7 +190,7 @@ def test_bids_parser_parse_arguments_flags() -> None:
     flags = ["interactive", "gradient", "bcg", "qc"]
     for flag in flags:
         run_bids_parser_parse_arguments_test(
-            ["prog", "--root", "data/bids-examples/eeg_ds000117", f"--{flag}"],
+            ["prog", "--root", "bids-examples/eeg_ds000117", f"--{flag}"],
             {flag: True},
         )
 
@@ -199,7 +199,7 @@ def test_bids_parser_parse_arguments_flags() -> None:
 def mock_parser(mocker: Any) -> script.BIDSParser:
     """Fixture to create a mock BIDSLayout."""
     args = mocker.MagicMock()
-    args.root = "data/bids-examples/eeg_ds000117"
+    args.root = "bids-examples/eeg_ds000117"
     args.datafolder = ""
     mocker.patch.object(script.BIDSParser, "_parse_arguments", return_value=args)
     mocker.patch("bids.BIDSLayout", return_value=mocker.MagicMock())
