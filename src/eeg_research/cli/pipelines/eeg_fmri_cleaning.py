@@ -27,55 +27,16 @@
 
 """CLI for processing and cleaning EEG data in BIDS format.
 
-It provides functionalities for:
-- Parsing command-line arguments for data directory, data folder, and cleaning scripts.
-- Creating a BIDS layout object for structured interaction with BIDS data.
-- Creating an "entities" dictionary mapping entity names to their respective values.
-- Providing an interactive menu for users to select cleaning scripts.
-- Selecting files based on the entities dictionary or through the interactive menu.
-- Processing the selected files by reading, cleaning, and saving the EEG data.
-
 TODO: The actual reading, cleaning, and saving of the EEG data are commented out.
 """
 
-import os
-
-import bids
-
-from eeg_research.cli.tools.interactive_menu import (
-    run_interactive_menu,
-    select_scripts_interactively,
-)
-from eeg_research.cli.tools.layout import create_entities
-from eeg_research.cli.tools.parser import parse_arguments
+from eeg_research.cli.tools.bids_parser import BIDSParser
+from eeg_research.cli.tools.interactive_menu import InteractiveMenu
 
 
 def main() -> None:
     """Main function."""
-    # Parse command line arguments
-    args = parse_arguments()
-
-    # If the datafolder is not provided
-    if args.datafolder is None:
-        # Set the reading root to the root
-        reading_root = args.root
-        layout = bids.BIDSLayout(reading_root, validate=True)
-    # If the data folder is provided
-    else:
-        # Set the reading root to the root/datafolder
-        reading_root = os.path.join(args.root, args.datafolder)
-
-        # If the datafolder is derivatives
-        if "derivatives" in args.datafolder:
-            # Set the layout to be a derivative layout
-            layout = bids.BIDSLayout(reading_root, validate=False, is_derivative=True)
-        # If the datafolder is source or rawdata
-        else:
-            # Set the layout to be a regular layout
-            layout = bids.BIDSLayout(reading_root, validate=True)
-
-    # Create entities dictionary
-    entities = create_entities(args, layout)
+    parser = BIDSParser()
 
     # Define the script files
     scripts = {
@@ -85,36 +46,90 @@ def main() -> None:
     }
 
     # If the user wants to run the interactive menu with no script flags
-    if args.interactive and not (args.gradient or args.bcg or args.qc):
+    if parser.args.interactive and not (
+        parser.args.gradient or parser.args.bcg or parser.args.qc
+    ):
         # Select the scripts via the interactive menu
-        selected_scripts = select_scripts_interactively()
+        menu_entries = [
+            script.replace(".py", "").replace("_", " ").title()
+            for script in scripts.values()
+        ]
+        menu = InteractiveMenu(
+            menu_entries=menu_entries,
+            entity="script",
+            title="Select the scripts you want to run:",
+        )
+        selected_scripts = menu.get_selected_items()
     # If the user does not want to run the interactive menu
-    elif not args.interactive:
+    elif not parser.args.interactive:
         # Select the scripts based on the flags
         selected_scripts = [
-            scripts[script] for script in scripts if getattr(args, script)
+            scripts[script] for script in scripts if getattr(parser.args, script)
         ]
     # If the user wants to run the interactive menu with script flags
     else:
         # Preselect the scripts based on the flags
         preselection = [
-            i for i, arg in enumerate([args.gradient, args.bcg, args.qc]) if arg
+            i
+            for i, arg in enumerate(
+                [parser.args.gradient, parser.args.bcg, parser.args.qc]
+            )
+            if arg
         ]
 
         # Run the interactive menu with the preselected scripts
-        selected_scripts = select_scripts_interactively(preselection)
+        menu = InteractiveMenu(
+            menu_entries=list(scripts.keys()),
+            entity="script",
+            title="Select the scripts you want to run:",
+            preselection=preselection,
+        )
+        selected_scripts = menu.get_selected_items()
 
     # If the user wants to run the interactive menu
-    if args.interactive:
-        # Run the interactive menu
-        files = run_interactive_menu(reading_root, layout, entities)
+    if parser.args.interactive:
+        # Create a BIDSLayout object for the data folder with given entities
+        layout = parser.update_layout(parser.entities)
+
+        # Get all entities associated with the data folder
+        available_entities = layout.get_entities()
+
+        # For each entity, get the available options and ask the user to select some
+        for entity in parser.entities.keys():
+            # Skip if the entity is not available or already selected
+            if (
+                entity not in available_entities.keys()
+                or parser.entities[entity] is not None
+            ):
+                continue
+            # Get the available options for the entity
+            menu_entries = getattr(layout, f"get_{entity}s")()
+            # If there is only one option, select it automatically
+            if len(menu_entries) == 1:
+                parser.entities[entity] = menu_entries[0]
+            # If there are multiple options, ask the user to select some
+            elif len(menu_entries) > 1:
+                menu = InteractiveMenu(
+                    menu_entries=menu_entries,
+                    entity=entity,
+                    title=f"Select the {entity}s you want to include:",
+                )
+                parser.entities[entity] = menu.get_selected_items()
+                # Update the BIDSLayout object to only include selected entities
+                layout = parser.update_layout(parser.entities)
+
+        # Remove None values from the selected entities
+        selected_entities = {k: v for k, v in parser.entities.items() if v is not None}
+        # Get the files based on the selected entities
+        files = parser.layout.get(return_type="file", **selected_entities)
+
     # If the user does not want to run the interactive menu
     else:
         # Remove None values from the entities dictionary
-        entities = {k: v for k, v in entities.items() if v is not None}
+        selected_entities = {k: v for k, v in parser.entities.items() if v is not None}
 
         # Get the files based on the flags
-        files = layout.get(return_type="file", **entities)
+        files = parser.layout.get(return_type="file", **selected_entities)
 
     # If no files are found
     if not files:
