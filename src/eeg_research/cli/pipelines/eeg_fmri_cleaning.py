@@ -32,43 +32,26 @@ TODO: The actual reading, cleaning, and saving of the EEG data are commented out
 
 from eeg_research.cli.tools.bids_parser import BIDSParser
 from eeg_research.cli.tools.interactive_menu import InteractiveMenu
+from eeg_research.preprocessing.pipelines.bcg_cleaning_pipeline import clean_bcg
+from eeg_research.preprocessing.pipelines.gradient_cleaning_pipeline import (
+    clean_gradient,
+)
+from eeg_research.preprocessing.tools.utils import read_raw_eeg, save_clean_eeg
 
 
 def main() -> None:
     """Main function."""
     parser = BIDSParser()
 
-    # Define the script files
     scripts = {
-        "gradient": "gradient_cleaning.py",
-        "bcg": "bcg_cleaning.py",
-        "qc": "quality_control.py",
+        "gradient": "Gradient Cleaning",
+        "bcg": "BCG Cleaning",
+        "qc": "Quality Control",
     }
 
-    # If the user wants to run the interactive menu with no script flags
-    if parser.args.interactive and not (
-        parser.args.gradient or parser.args.bcg or parser.args.qc
-    ):
-        # Select the scripts via the interactive menu
-        menu_entries = [
-            script.replace(".py", "").replace("_", " ").title()
-            for script in scripts.values()
-        ]
-        menu = InteractiveMenu(
-            menu_entries=menu_entries,
-            entity="script",
-            title="Select the scripts you want to run:",
-        )
-        selected_scripts = menu.get_selected_items()
-    # If the user does not want to run the interactive menu
-    elif not parser.args.interactive:
-        # Select the scripts based on the flags
-        selected_scripts = [
-            scripts[script] for script in scripts if getattr(parser.args, script)
-        ]
-    # If the user wants to run the interactive menu with script flags
-    else:
-        # Preselect the scripts based on the flags
+    # If the user wants to run the interactive menu
+    if parser.args.interactive:
+        # If script flags are provided, preselect the scripts based on the flags
         preselection = [
             i
             for i, arg in enumerate(
@@ -76,18 +59,15 @@ def main() -> None:
             )
             if arg
         ]
-
         # Run the interactive menu with the preselected scripts
         menu = InteractiveMenu(
-            menu_entries=list(scripts.keys()),
+            menu_entries=[script for script in scripts.values()],
             entity="script",
             title="Select the scripts you want to run:",
             preselection=preselection,
         )
         selected_scripts = menu.get_selected_items()
 
-    # If the user wants to run the interactive menu
-    if parser.args.interactive:
         # Create a BIDSLayout object for the data folder with given entities
         layout = parser.update_layout(parser.entities)
 
@@ -125,38 +105,39 @@ def main() -> None:
 
     # If the user does not want to run the interactive menu
     else:
+        # Select the scripts based on the flags
+        selected_scripts = [
+            scripts[script] for script in scripts if getattr(parser.args, script)
+        ]
         # Remove None values from the entities dictionary
         selected_entities = {k: v for k, v in parser.entities.items() if v is not None}
 
         # Get the files based on the flags
         files = parser.layout.get(return_type="file", **selected_entities)
 
-    # If no files are found
     if not files:
-        # Raise a FileNotFoundError
         raise FileNotFoundError("No valid files found with the given arguments.")
-    # If files are found
     else:
-        # Print the number of files found
         print(f"Found {len(files)} valid files.")
 
-        # Print the selected scripts
         print(f"Running {selected_scripts} scripts on these files:")
 
-    # Loop through the files
     for file in files:
         print(f"Current file: {file}")
 
-        # Read the raw file
-        # raw = read_raw_eeg(file, preload=True)
+        raw = read_raw_eeg(file, preload=True)
 
-        # Clean the raw file based on the selected scripts
-        # if "gradient" in selected_scripts:
-        #     raw = clean_gradient(raw)
-        # if "bcg" in selected_scripts:
-        #     raw = clean_bcg(raw)
+        selected_scripts_keys = [k for k, v in scripts.items() if v in selected_scripts]
 
-        # Save the cleaned file
+        if "gradient" in selected_scripts_keys:
+            raw = clean_gradient(raw)
+        if "bcg" in selected_scripts_keys:
+            raw = clean_bcg(raw)
+        if "qc" in selected_scripts_keys:
+            # implement quality control
+            pass
+
+        save_clean_eeg(raw, file, selected_scripts_keys)
 
     print("Processing complete.")
 

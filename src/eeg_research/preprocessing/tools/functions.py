@@ -27,13 +27,6 @@
 
 """GENERAL DOCUMENTATION HERE."""
 
-# standard-library imports
-import os
-
-# third-party imports (and comments indicating how to install them)
-# python -m conda install -c conda-forge mne       or    python -m pip install mne
-import mne
-
 # python -m conda install -c conda-forge numpy     or    python -m pip install numpy
 import numpy as np
 
@@ -55,61 +48,6 @@ class NoDataTypeError(Exception):  # noqa: D101
 
 class ReadingFileError(Exception):  # noqa: D101
     pass
-
-
-def read_raw_eeg(filename: str, preload: bool = False) -> mne.io.Raw:
-    """Read raw EEG data from a file.
-
-    Wrapper function around mne.io.read_raw_* functions
-    to chose the right reading method based on the file extension.
-
-    Format  of the fileallowed are:
-    - egi (.mff, .RAW)
-    - bdf (.bdf)
-    - edf (.edf)
-    - fif (.fif)
-    - eeglab (.set)
-    - brainvision (.eeg)
-
-    Args:
-        filename (str): path to the file
-        preload (bool, optional): if True, the data will be preloaded into memory.
-            Defaults to False.
-
-    Raises:
-        FileNotFoundError: if the specified file does not exist.
-
-    Returns:
-        raw (mne.io.Raw): MNE raw object
-    """
-    if os.path.exists(filename):
-        extension = os.path.splitext(filename)[1]
-        if extension == ".mff" or extension == ".RAW":
-            method = "read_raw_egi"
-        elif extension == ".bdf":
-            method = "read_raw_bdf"
-        elif extension == ".edf":
-            method = "read_raw_edf"
-        elif extension == ".fif":
-            method = "read_raw_fif"
-        elif extension == ".set":
-            method = "read_raw_eeglab"
-        elif extension == ".vhdr":
-            method = "read_raw_brainvision"
-
-        reader = getattr(mne.io, method)
-        try:
-            raw = reader(filename, preload=preload)
-            return raw
-
-        except mne.io.ReadingFileError:
-            print(
-                f"File {filename} is corrupted or "
-                f"extension {extension} is not recognized"
-            )
-
-    else:
-        raise FileNotFoundError(f"File {filename} does not exist")
 
 
 def avg_fft_calculation(signal: np.ndarray) -> list[float]:

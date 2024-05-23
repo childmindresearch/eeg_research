@@ -64,7 +64,7 @@ def clean_bcg(raw: mne.io.Raw) -> mne.io.Raw:
     # ================================================================================
 
     projections, _ = mne.preprocessing.compute_proj_ecg(
-        raw, ch_name=channel_map["ecg"], n_eeg=2, reject=None
+        raw, ch_name=channel_map["ecg"][0], n_eeg=2, reject=None
     )
     raw.add_proj(projections)
     if not channel_map:

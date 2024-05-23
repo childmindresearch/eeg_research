@@ -27,7 +27,87 @@
 
 """GENERAL DOCUMENTATION HERE."""
 
+import os
+
 import mne
+
+
+def read_raw_eeg(filename: str, preload: bool = False) -> mne.io.Raw:
+    """Read raw EEG data from a file.
+
+    Wrapper function around mne.io.read_raw_* functions
+    to chose the right reading method based on the file extension.
+
+    Format  of the fileallowed are:
+    - egi (.mff, .RAW)
+    - bdf (.bdf)
+    - edf (.edf)
+    - fif (.fif)
+    - eeglab (.set)
+    - brainvision (.eeg)
+
+    Args:
+        filename (str): path to the file
+        preload (bool, optional): if True, the data will be preloaded into memory.
+            Defaults to False.
+
+    Raises:
+        FileNotFoundError: if the specified file does not exist.
+
+    Returns:
+        raw (mne.io.Raw): MNE raw object
+    """
+    if os.path.exists(filename):
+        extension = os.path.splitext(filename)[1]
+        if extension == ".mff" or extension == ".RAW":
+            method = "read_raw_egi"
+        elif extension == ".bdf":
+            method = "read_raw_bdf"
+        elif extension == ".edf":
+            method = "read_raw_edf"
+        elif extension == ".fif":
+            method = "read_raw_fif"
+        elif extension == ".set":
+            method = "read_raw_eeglab"
+        elif extension == ".vhdr":
+            method = "read_raw_brainvision"
+
+        reader = getattr(mne.io, method)
+        try:
+            raw = reader(filename, preload=preload)
+            return raw
+
+        except mne.io.ReadingFileError:
+            print(
+                f"File {filename} is corrupted or "
+                f"extension {extension} is not recognized"
+            )
+
+    else:
+        raise FileNotFoundError(f"File {filename} does not exist")
+
+
+def save_clean_eeg(raw: mne.io.Raw, file: str, scripts: list[str]) -> None:
+    """Save the cleaned raw EEG data in the BIDS format.
+
+    Args:
+        raw (mne.io.Raw): MNE raw object containing the cleaned EEG data.
+        file (str): path to the original file.
+        scripts (list[str]): list of scripts used for cleaning the data.
+    """
+    base_filepath, _ = os.path.splitext(file)
+    destination_path = (
+        base_filepath.split("sub-", 1)[0]
+        + "derivatives/sub-"
+        + base_filepath.split("sub-", 1)[1]
+    )
+    scripts_str = "_".join(scripts) + "_clean_eeg"
+    destination_path = destination_path.replace(
+        "/eeg/sub-", "/" + scripts_str + "/sub-"
+    )
+    saving_filename = destination_path[:-3] + scripts_str + ".fif"
+    os.makedirs(os.path.dirname(saving_filename), exist_ok=True)
+    raw.save(saving_filename, overwrite=True)
 
 
 def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
@@ -45,7 +125,7 @@ def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
         str: The real name of the channel in the raw object.
     """
     real_name = [ch_name for ch_name in raw.ch_names if name.lower() in ch_name.lower()]
-    return real_name[0]
+    return real_name[0] if real_name else None
 
 
 def map_channel_type(raw: mne.io.Raw) -> dict:
@@ -61,12 +141,12 @@ def map_channel_type(raw: mne.io.Raw) -> dict:
     for ch_type in ["ecg", "eog"]:
         ch_name_in_raw = find_real_channel_name(raw, ch_type)
         if ch_name_in_raw:
-            channels_mapping.update({ch_type: ch_name_in_raw})
+            channels_mapping.update({ch_type: [ch_name_in_raw]})
         else:
             print(f"No {ch_type.upper()} channel found.")
             if ch_type == "eog":
                 print("Fp1 and Fp2 will be used for EOG signal detection")
-                channels_mapping.update({"eog": "will be Fp1 and Fp2"})
+                channels_mapping.update({"eog": ["Fp1", "Fp2"]})
 
     return channels_mapping
 
@@ -82,6 +162,7 @@ def set_channel_types(raw: mne.io.Raw, channel_map: dict) -> mne.io.Raw:
     Returns:
         mne.io.Raw: MNE raw object
     """
-    for ch_type, ch_name in channel_map.items():
-        raw.set_channel_types({ch_name: ch_type})
+    for ch_type, ch_names in channel_map.items():
+        for ch_name in ch_names:
+            raw.set_channel_types({ch_name: ch_type})
     return raw
