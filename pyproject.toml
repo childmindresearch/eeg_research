@@ -78,7 +78,8 @@ src = ["src"]
 target-version = "py311"
 extend-exclude = [
   "*.ipynb",
-  "src/eeg_research/labs"
+  "src/eeg_research/labs",
+  "bids-examples"
 ]
 
 [tool.ruff.lint]
