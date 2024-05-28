@@ -27,9 +27,192 @@
 
 """GENERAL DOCUMENTATION HERE."""
 
+# standard-library imports
 import os
 
+# third-party imports (and comments indicating how to install them)
+# python -m conda install -c conda-forge mne       or    python -m pip install mne
 import mne
+
+# python -m conda install -c conda-forge numpy     or    python -m pip install numpy
+import numpy as np
+
+# python -m conda install -c conda-forge scipy     or    python -m pip install scipy
+import scipy
+
+
+class NoSubjectFoundError(Exception):  # noqa: D101
+    pass
+
+
+class NoSessionFoundError(Exception):  # noqa: D101
+    pass
+
+
+class NoDataTypeError(Exception):  # noqa: D101
+    pass
+
+
+class ReadingFileError(Exception):  # noqa: D101
+    pass
+
+
+def get_numbers(
+    kwargs: dict, key: str, path: str | os.PathLike, prefix: str
+) -> list[str]:
+    """Retrieve existing numbers and return a list of desired numbers.
+
+    Args:
+        kwargs (dict): Dictionary of keyword arguments.
+        key (str): Key to retrieve desired numbers from kwargs.
+        path (str or PathLike): Path to data directory.
+        prefix (str): Prefix for desired numbers.
+
+    Raises:
+        Exception: An error occurred while retrieving existing numbers.
+        Exception: An error occurred while retrieving desired numbers.
+
+    Returns:
+        list[str]: List of desired numbers.
+    """
+    try:
+        existing_numbers = set(numerical_explorer(path, prefix))
+    except Exception as e:
+        raise Exception(
+            "An error occurred while retrieving existing " f"{key} numbers. {e}"
+        )
+    try:
+        desired_numbers = set(
+            input_interpreter(
+                str(kwargs.get(key)), prefix, max_value=max(existing_numbers)
+            )
+        )
+    except Exception as e:
+        raise Exception(
+            "An error occurred while retrieving desired " f"{key} numbers. {e}"
+        )
+
+    numbers = list(existing_numbers.intersection(desired_numbers))
+    return [f"{number:02d}" for number in numbers]
+
+
+def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
+    """Find the name as it is in the raw object.
+
+    Channel names vary across different EEG systems and manufacturers. It varies
+    in terms of capitalization, spacing, and special characters. This function
+    finds the real name of the channel in the raw object.
+
+    Args:
+        raw (mne.io.Raw): The mne Raw object
+        name (str): The name of the channel to find in lower case.
+
+    Returns:
+        str: The real name of the channel in the raw object.
+    """
+    channel_found = list()
+    for ch_name in raw.info['ch_names']:
+        if name.lower() in ch_name.lower():
+            channel_found.append(ch_name)
+    return channel_found
+
+def map_channel_type(raw: mne.io.Raw) -> dict:
+    """Find and map into MNE type the ECG and EOG channels.
+
+    Args:
+        raw (mne.io.Raw): MNE raw object
+
+    Returns:
+        dict: dictionary of channel type to map into `raw.set_channel_types` method
+    """
+    channels_mapping = dict()
+    for ch_type in ["ecg", "eog"]:
+        ch_name_in_raw = find_real_channel_name(raw, ch_type)
+        if ch_name_in_raw:
+            if len(ch_name_in_raw) == 1:
+                channels_mapping.update({ch_name_in_raw[0]:ch_type})
+            elif len(ch_name_in_raw) > 1:
+                for name in ch_name_in_raw:
+                    channels_mapping.update({name:ch_type})
+        else:
+            print(f"No {ch_type.upper()} channel found.")
+            if ch_type == "eog":
+                print("Fp1 and Fp2 will be used for EOG signal detection")
+
+    return channels_mapping
+
+
+def set_channel_types(raw: mne.io.Raw, channel_map: dict) -> mne.io.Raw:
+    """Set the channel types of the raw object.
+
+    Args:
+        raw (mne.io.Raw): MNE raw object
+        channel_map (dict): dictionary of channel type to map into
+        `raw.set_channel_types` method
+
+    Returns:
+        mne.io.Raw: MNE raw object
+    """
+    #for ch_names, ch_type in channel_map.items():
+    raw.set_channel_types(channel_map)
+    return raw
+
+
+def input_interpreter(
+    input_string: str, input_param: str, max_value: int = 1000
+) -> list[int]:
+    """Interpret input string as a list of integers.
+
+    The input string can contain:
+        - a list of integers separated by commas (e.g. "1,3,5,7")
+        - a range of integers separated by a hyphen (e.g. "1-5") which will be
+          interpreted as "1,2,3,4,5"
+        - a range of integers separated by a hyphen with an asterisk
+          (e.g. "1-*") which will be interpreted as "1 to the maximum value"
+          which can be specified by the max_value argument (max number of
+          subjects for example).
+
+    The input can be a combination of the above (e.g. "1,3-5,7-*") which will
+    be interpreted as "1,3,4,5,7 to the maximum value"
+
+
+    Args:
+        input_string (str): input string
+        input_param (str): input parameter name
+        max_value (int, optional): maximum value for the asterisk. Defaults to 1000.
+
+    Returns:
+        list[int]: list of integers
+    """
+    elements = input_string.split(",")
+    desired_subject_numbers: list[int] = []
+    for element in elements:
+        if "-" in element:
+            start, stop = element.split("-")
+            start = start.replace("*", "0")
+            stop = stop.replace("*", str(max_value))
+            start = start.strip()
+            stop = stop.strip()
+            if start.isnumeric() and stop.isnumeric():
+                desired_subject_numbers.extend(range(int(start), int(stop) + 1))
+            else:
+                raise ValueError(
+                    f"Please make sure that '{input_param}'='{input_string}' is "
+                    "correctly formatted. See help for more information."
+                )
+                break
+        else:
+            if element.strip().isnumeric():
+                desired_subject_numbers.append(int(element))
+            elif element.strip() == "all":
+                desired_subject_numbers.extend(range(1, max_value + 1))
+            else:
+                raise ValueError(
+                    f"Please make sure that '{input_param}'='{input_string}' is "
+                    "correctly formatted. See help for more information."
+                )
+                break
+    return desired_subject_numbers
 
 
 def read_raw_eeg(filename: str, preload: bool = False) -> mne.io.Raw:
@@ -77,7 +260,7 @@ def read_raw_eeg(filename: str, preload: bool = False) -> mne.io.Raw:
             raw = reader(filename, preload=preload)
             return raw
 
-        except mne.io.ReadingFileError:
+        except mne.io.reading.ReadingFileError:
             print(
                 f"File {filename} is corrupted or "
                 f"extension {extension} is not recognized"
@@ -87,82 +270,32 @@ def read_raw_eeg(filename: str, preload: bool = False) -> mne.io.Raw:
         raise FileNotFoundError(f"File {filename} does not exist")
 
 
-def save_clean_eeg(raw: mne.io.Raw, file: str, scripts: list[str]) -> None:
-    """Save the cleaned raw EEG data in the BIDS format.
+def numerical_explorer(directory: str | os.PathLike, prefix: str) -> list[int]:
+    """Give the existing numerical elements based on the prefix.
 
     Args:
-        raw (mne.io.Raw): MNE raw object containing the cleaned EEG data.
-        file (str): path to the original file.
-        scripts (list[str]): list of scripts used for cleaning the data.
-    """
-    base_filepath, _ = os.path.splitext(file)
-    destination_path = (
-        base_filepath.split("sub-", 1)[0]
-        + "derivatives/sub-"
-        + base_filepath.split("sub-", 1)[1]
-    )
-    scripts_str = "_".join(scripts) + "_clean_eeg"
-    destination_path = destination_path.replace(
-        "/eeg/sub-", "/" + scripts_str + "/sub-"
-    )
-    saving_filename = destination_path[:-3] + scripts_str + ".fif"
-    os.makedirs(os.path.dirname(saving_filename), exist_ok=True)
-    raw.save(saving_filename, overwrite=True)
-
-
-def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
-    """Find the name as it is in the raw object.
-
-    Channel names vary across different EEG systems and manufacturers. It varies
-    in terms of capitalization, spacing, and special characters. This function
-    finds the real name of the channel in the raw object.
-
-    Args:
-        raw (mne.io.Raw): The mne Raw object
-        name (str): The name of the channel to find in lower case.
+        directory (str of PathLike): directory to explore
+        prefix (str): prefix to filter the elements (e.g., "sub", "ses", "run")
 
     Returns:
-        str: The real name of the channel in the raw object.
+        list[int]: List of existing numerical elements based on the prefix
     """
-    real_name = [ch_name for ch_name in raw.ch_names if name.lower() in ch_name.lower()]
-    return real_name[0] if real_name else None
-
-
-def map_channel_type(raw: mne.io.Raw) -> dict:
-    """Find and map into MNE type the ECG and EOG channels.
-
-    Args:
-        raw (mne.io.Raw): MNE raw object
-
-    Returns:
-        dict: dictionary of channel type to map into `raw.set_channel_types` method
-    """
-    channels_mapping = dict()
-    for ch_type in ["ecg", "eog"]:
-        ch_name_in_raw = find_real_channel_name(raw, ch_type)
-        if ch_name_in_raw:
-            channels_mapping.update({ch_type: [ch_name_in_raw]})
+    if os.path.isdir(directory):
+        if prefix == "run":
+            elements = [
+                int(element.split("_run-")[-1][:2])
+                for element in os.listdir(directory)
+                if prefix in element
+            ]
         else:
-            print(f"No {ch_type.upper()} channel found.")
-            if ch_type == "eog":
-                print("Fp1 and Fp2 will be used for EOG signal detection")
-                channels_mapping.update({"eog": ["Fp1", "Fp2"]})
-
-    return channels_mapping
-
-
-def set_channel_types(raw: mne.io.Raw, channel_map: dict) -> mne.io.Raw:
-    """Set the channel types of the raw object.
-
-    Args:
-        raw (mne.io.Raw): MNE raw object
-        channel_map (dict): dictionary of channel type to map into
-        `raw.set_channel_types` method
-
-    Returns:
-        mne.io.Raw: MNE raw object
-    """
-    for ch_type, ch_names in channel_map.items():
-        for ch_name in ch_names:
-            raw.set_channel_types({ch_name: ch_type})
-    return raw
+            elements = [
+                int(element.split("-")[-1])
+                for element in os.listdir(directory)
+                if prefix in element
+            ]
+        if elements:
+            return elements
+        else:
+            raise ValueError(f"No element with prefix '{prefix}' found in {directory}")
+    else:
+        raise NotADirectoryError(f"{directory} is not a directory")
