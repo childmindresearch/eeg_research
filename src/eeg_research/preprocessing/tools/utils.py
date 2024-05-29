@@ -95,6 +95,33 @@ def get_numbers(
     numbers = list(existing_numbers.intersection(desired_numbers))
     return [f"{number:02d}" for number in numbers]
 
+def extract_gradient_trigger_name(
+    raw: mne.io.Raw,
+    desired_trigger_name: str = "R128"
+) -> str:
+    """Extract the name of the trigger for gradient artifact removal.
+
+    Name of the gradient trigger can change across different paradigm,
+    acquisition etc.
+
+    Args:
+        raw (mne.io.Raw): The raw object containing the EEG data.
+        desired_trigger_name (str, optional): The theoretical name of the
+                                            trigger or a substring.
+                                            Defaults to "R128".
+
+    Returns:
+        str: The gradient trigger name as it is in the raw object
+
+    Raises:
+        Exception: No gradient trigger found.
+    """
+    annotations_names = np.unique(raw.annotations.description)
+    for annotation_name in annotations_names:
+        if desired_trigger_name.lower() in annotation_name.lower():
+            return annotation_name
+
+    raise Exception("No gradient trigger found. Check the desired trigger name.")
 
 def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
     """Find the name as it is in the raw object.
