@@ -28,6 +28,7 @@
 """GENERAL DOCUMENTATION HERE."""
 
 import os
+import warnings
 
 import mne
 import numpy as np
@@ -174,8 +175,8 @@ def set_channel_types(raw: mne.io.Raw, channel_map: dict) -> mne.io.Raw:
 
 
 def extract_gradient_trigger_name(
-    raw: mne.io.Raw, desired_trigger_name: str = "R128"
-) -> str:
+    raw: mne.io.Raw, desired_trigger_name: str = "R128", on_missing: str = "raise"
+) -> str | None:
     """Extract the name of the trigger for gradient artifact removal.
 
     Name of the gradient trigger can change across different paradigm,
@@ -186,9 +187,11 @@ def extract_gradient_trigger_name(
         desired_trigger_name (str, optional): The theoretical name of the
                                             trigger or a substring.
                                             Defaults to "R128".
+        on_missing (str, optional): What to do if the trigger is not found.
+                                    Can be either "raise" or "warn" or "ignore".
 
     Returns:
-        str: The gradient trigger name as it is in the raw object
+        str | None: The name of the trigger for gradient artifact removal.
 
     Raises:
         Exception: No gradient trigger found.
@@ -198,4 +201,12 @@ def extract_gradient_trigger_name(
         if desired_trigger_name.lower() in annotation_name.lower():
             return annotation_name
 
-    raise Exception("No gradient trigger found. Check the desired trigger name.")
+    if on_missing == "ignore":
+        return None
+    elif on_missing == "warn":
+        warnings.warn("No gradient trigger found. Check the desired trigger name.")
+        return None
+    elif on_missing == "raise":
+        raise Exception("No gradient trigger found. Check the desired trigger name.")
+    else:
+        return None
