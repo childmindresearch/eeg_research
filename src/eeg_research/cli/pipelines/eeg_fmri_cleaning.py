@@ -25,10 +25,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ===============================================================================
 
-"""CLI for processing and cleaning EEG data in BIDS format.
-
-TODO: The actual reading, cleaning, and saving of the EEG data are commented out.
-"""
+"""CLI for processing and cleaning EEG data in BIDS format."""
 
 from eeg_research.cli.tools.bids_parser import BIDSParser
 from eeg_research.cli.tools.interactive_menu import InteractiveMenu
