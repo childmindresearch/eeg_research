@@ -30,6 +30,7 @@
 import os
 
 import mne
+import numpy as np
 
 
 def read_raw_eeg(filename: str, preload: bool = False) -> mne.io.Raw:
@@ -110,7 +111,7 @@ def save_clean_eeg(raw: mne.io.Raw, file: str, scripts: list[str]) -> None:
     raw.save(saving_filename, overwrite=True)
 
 
-def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
+def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> list:
     """Find the name as it is in the raw object.
 
     Channel names vary across different EEG systems and manufacturers. It varies
@@ -124,8 +125,11 @@ def find_real_channel_name(raw: mne.io.Raw, name: str = "ecg") -> str:
     Returns:
         str: The real name of the channel in the raw object.
     """
-    real_name = [ch_name for ch_name in raw.ch_names if name.lower() in ch_name.lower()]
-    return real_name[0] if real_name else None
+    channel_found = list()
+    for ch_name in raw.info["ch_names"]:
+        if name.lower() in ch_name.lower():
+            channel_found.append(ch_name)
+    return channel_found
 
 
 def map_channel_type(raw: mne.io.Raw) -> dict:
@@ -141,12 +145,15 @@ def map_channel_type(raw: mne.io.Raw) -> dict:
     for ch_type in ["ecg", "eog"]:
         ch_name_in_raw = find_real_channel_name(raw, ch_type)
         if ch_name_in_raw:
-            channels_mapping.update({ch_type: [ch_name_in_raw]})
+            if len(ch_name_in_raw) == 1:
+                channels_mapping.update({ch_name_in_raw[0]: ch_type})
+            elif len(ch_name_in_raw) > 1:
+                for name in ch_name_in_raw:
+                    channels_mapping.update({name: ch_type})
         else:
             print(f"No {ch_type.upper()} channel found.")
             if ch_type == "eog":
                 print("Fp1 and Fp2 will be used for EOG signal detection")
-                channels_mapping.update({"eog": ["Fp1", "Fp2"]})
 
     return channels_mapping
 
@@ -162,7 +169,33 @@ def set_channel_types(raw: mne.io.Raw, channel_map: dict) -> mne.io.Raw:
     Returns:
         mne.io.Raw: MNE raw object
     """
-    for ch_type, ch_names in channel_map.items():
-        for ch_name in ch_names:
-            raw.set_channel_types({ch_name: ch_type})
+    raw.set_channel_types(channel_map)
     return raw
+
+
+def extract_gradient_trigger_name(
+    raw: mne.io.Raw, desired_trigger_name: str = "R128"
+) -> str:
+    """Extract the name of the trigger for gradient artifact removal.
+
+    Name of the gradient trigger can change across different paradigm,
+    acquisition etc.
+
+    Args:
+        raw (mne.io.Raw): The raw object containing the EEG data.
+        desired_trigger_name (str, optional): The theoretical name of the
+                                            trigger or a substring.
+                                            Defaults to "R128".
+
+    Returns:
+        str: The gradient trigger name as it is in the raw object
+
+    Raises:
+        Exception: No gradient trigger found.
+    """
+    annotations_names = np.unique(raw.annotations.description)
+    for annotation_name in annotations_names:
+        if desired_trigger_name.lower() in annotation_name.lower():
+            return annotation_name
+
+    raise Exception("No gradient trigger found. Check the desired trigger name.")
