@@ -33,14 +33,13 @@ import argparse
 import datetime
 import functools
 import os
-from typing import Callable
+from typing import Callable, ParamSpec, TypeVar
 
 import asrpy as asr
 import mne
 import numpy as np
 import pandas as pd
 import pyprep as prep
-from typing_extensions import ParamSpec, TypeVar
 
 from eeg_research.preprocessing.tools import utils
 
