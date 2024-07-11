@@ -26,18 +26,22 @@
 """Module to preprocess the EEG dataset.
 
 It uses the argparse default CLI while waiting for our specific CLI module to 
-be documented"""
+be documented
+"""
 
+import argparse
 import datetime
-import os
 import functools
+import os
+from typing import Callable
 
 import asrpy as asr
 import mne
 import numpy as np
 import pandas as pd
 import pyprep as prep
-import argparse
+from typing_extensions import ParamSpec, TypeVar
+
 from eeg_research.preprocessing.tools import utils
 
 parser = argparse.ArgumentParser(
@@ -58,18 +62,36 @@ parser.add_argument('--methods',
                     nargs='*')
 kwargs_namespace = parser.parse_args()
 
-def trackcalls(func):
+ParamType = ParamSpec('ParamType')
+ReturnType = TypeVar('ReturnType')
+
+def trackcalls(func: Callable[ParamType, ReturnType]
+               ) -> Callable[ParamType, ReturnType]:
+    """Decorator to track if a method have been called.
+
+    Args:
+        func (Callable[ParamType, ReturnType]): The function to decorate
+
+    Returns:
+        Callable[ParamType, ReturnType]: The function decorated
+    """
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: ParamType.args, 
+                **kwargs: ParamType.kwargs) -> Callable[ParamType]:
         wrapper.has_been_called = True
         return func(*args, **kwargs)
     wrapper.has_been_called = False
     return wrapper
 
 class MissingStepError(Exception):
-    def __init__(self, message: str):
+    """Custom exception telling a step is missing when calling a method.
+
+    Args:
+        Exception (_type_): _description_
+    """
+    def __init__(self, message: str) -> None:  # noqa: D107
         self.message = message
-    def __str__(self):
+    def __str__(self) -> str:  # noqa: D105
         return self.message
 
 class EEGpreprocessing:
@@ -209,7 +231,17 @@ class EEGpreprocessing:
 
 def main(reading_filename: str | os.PathLike, 
          saving_filename: str | os.PathLike,
-         methods: list[str]):
+         methods: list[str]) -> None:
+    """Wrapper to access to the preprocess from CLI.
+    
+    Args:
+        reading_filename (str | PathLike): The EEG filename (full path)
+        saving_filename (str | PathLike): Where to save the preprocessed data
+        methods (list of str): The methods to use in the pipeline
+    
+    Return:
+        None
+    """
     preprocess = EEGpreprocessing(reading_filename)
     existing_method = [cl_method for cl_method in dir(preprocess)
                     if not cl_method.startswith('__')]
