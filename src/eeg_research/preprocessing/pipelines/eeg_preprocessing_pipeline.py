@@ -33,7 +33,7 @@ import argparse
 import datetime
 import functools
 import os
-from typing import Callable, ParamSpec, TypeVar
+from typing import Callable, ParamSpec, Protocol, TypeVar, runtime_checkable
 
 import asrpy as asr
 import mne
@@ -64,6 +64,15 @@ kwargs_namespace = parser.parse_args()
 ParamType = ParamSpec('ParamType')
 ReturnType = TypeVar('ReturnType')
 
+@runtime_checkable
+class TrackedCallable(Protocol):
+    """Define the attribute `has_been_called` type.
+
+    Args:
+        Protocol (Protocol): A protocol class
+    """
+    has_been_called: bool
+    
 def trackcalls(func: Callable[ParamType, ReturnType]
                ) -> Callable[ParamType, ReturnType]:
     """Decorator to track if a method have been called.
@@ -80,7 +89,7 @@ def trackcalls(func: Callable[ParamType, ReturnType]
         setattr(wrapper, "has_been_called", True)
         return func(*args, **kwargs)
     setattr(wrapper, "has_been_called", False)
-    return wrapper
+    return wrapper # type: ignore
 
 class MissingStepError(Exception):
     """Custom exception telling a step is missing when calling a method.
