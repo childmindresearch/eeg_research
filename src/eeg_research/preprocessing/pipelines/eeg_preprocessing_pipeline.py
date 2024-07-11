@@ -77,7 +77,7 @@ def trackcalls(func: Callable[ParamType, ReturnType]
     @functools.wraps(func)
     def wrapper(*args: ParamType.args, 
                 **kwargs: ParamType.kwargs) -> Callable[ParamType]:
-        wrapper.has_been_called = True
+        setattr(wrapper, "has_been_called", True)
         return func(*args, **kwargs)
     wrapper.has_been_called = False
     return wrapper
