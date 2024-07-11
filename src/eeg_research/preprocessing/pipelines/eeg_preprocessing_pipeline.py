@@ -33,7 +33,7 @@ import argparse
 import datetime
 import functools
 import os
-from typing import Callable, ParamSpec, Protocol, TypeVar, runtime_checkable
+from typing import Callable, ParamSpec, TypeVar
 
 import asrpy as asr
 import mne
@@ -64,15 +64,6 @@ kwargs_namespace = parser.parse_args()
 ParamType = ParamSpec('ParamType')
 ReturnType = TypeVar('ReturnType')
 
-@runtime_checkable
-class TrackedCallable(Protocol):
-    """Define the attribute `has_been_called` type.
-
-    Args:
-        Protocol (Protocol): A protocol class
-    """
-    has_been_called: bool
-    
 def trackcalls(func: Callable[ParamType, ReturnType]
                ) -> Callable[ParamType, ReturnType]:
     """Decorator to track if a method have been called.
@@ -89,7 +80,7 @@ def trackcalls(func: Callable[ParamType, ReturnType]
         setattr(wrapper, "has_been_called", True)
         return func(*args, **kwargs)
     setattr(wrapper, "has_been_called", False)
-    return wrapper # type: ignore
+    return wrapper
 
 class MissingStepError(Exception):
     """Custom exception telling a step is missing when calling a method.
@@ -194,7 +185,7 @@ class EEGpreprocessing:
         Returns:
             EEGpreprocessing object
         """
-        if self.set_montage.has_been_called:
+        if self.set_montage.has_been_called: # type: ignore[attr-defined]
             prep_params = {
                 "ref_chs": "eeg",
                 "reref_chs": "eeg",
@@ -218,7 +209,7 @@ class EEGpreprocessing:
         Returns:
             EEGpreprocessing object
         """
-        if self.set_montage.has_been_called:
+        if self.set_montage.has_been_called: # type: ignore[attr-defined]
             asr_obj = asr.ASR(sfreq=self.raw.info["sfreq"], cutoff=10)
             asr_obj.fit(self.raw)
             self.raw = asr_obj.transform(self.raw)
