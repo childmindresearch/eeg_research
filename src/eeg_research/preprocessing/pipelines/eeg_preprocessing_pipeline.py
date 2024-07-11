@@ -76,10 +76,10 @@ def trackcalls(func: Callable[ParamType, ReturnType]
     """
     @functools.wraps(func)
     def wrapper(*args: ParamType.args, 
-                **kwargs: ParamType.kwargs) -> Callable[ParamType]:
+                **kwargs: ParamType.kwargs) -> ReturnType:
         setattr(wrapper, "has_been_called", True)
         return func(*args, **kwargs)
-    wrapper.has_been_called = False
+    setattr(wrapper, "has_been_called", False)
     return wrapper
 
 class MissingStepError(Exception):
