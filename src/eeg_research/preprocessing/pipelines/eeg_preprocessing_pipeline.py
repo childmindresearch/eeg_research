@@ -43,26 +43,6 @@ import pyprep as prep
 
 from eeg_research.preprocessing.tools import utils
 
-parser = argparse.ArgumentParser(
-                    prog='eeg_preprocessing_pipeline',
-                    description="""
-    This code uses different preprocessing methods/techniques to prepare EEG
-    data. 
-                    """,
-                    epilog="""
-    The preprocessing methods has to be sepcified by by calling --methods
-    when calling the script. It can be several methods, names have to be
-    separated by a comma. Beware the order matters
-    """)
-
-parser.add_argument('reading_filename', default = None,
-                    help = "The full path of the EEG file to process")
-parser.add_argument('saving_filename', default = None,
-                    help = "The full path where to save the processed EEG file")
-parser.add_argument('--methods',
-                    nargs='*')
-kwargs_namespace = parser.parse_args()
-
 ParamType = ParamSpec('ParamType')
 ReturnType = TypeVar('ReturnType')
 
@@ -258,4 +238,23 @@ Wrong input method name. Should be one of the following:
     preprocess.save(saving_filename)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+                        prog='eeg_preprocessing_pipeline',
+                        description="""
+        This code uses different preprocessing methods/techniques to prepare EEG
+        data. 
+                        """,
+                        epilog="""
+        The preprocessing methods has to be sepcified by by calling --methods
+        when calling the script. It can be several methods, names have to be
+        separated by a comma. Beware the order matters
+        """)
+
+    parser.add_argument('reading_filename', default = None,
+                        help = "The full path of the EEG file to process")
+    parser.add_argument('saving_filename', default = None,
+                        help = "The full path where to save the processed EEG file")
+    parser.add_argument('--methods',
+                        nargs='*')
+    kwargs_namespace = parser.parse_args()
     main(**kwargs_namespace.__dict__)
