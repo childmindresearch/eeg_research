@@ -55,8 +55,10 @@ parser = argparse.ArgumentParser(
     separated by a comma. Beware the order matters
     """)
 
-parser.add_argument('reading_filename')
-parser.add_argument('saving_filename')
+parser.add_argument('reading_filename', default = None,
+                    help = "The full path of the EEG file to process")
+parser.add_argument('saving_filename', default = None,
+                    help = "The full path where to save the processed EEG file")
 parser.add_argument('--methods',
                     nargs='*')
 kwargs_namespace = parser.parse_args()
