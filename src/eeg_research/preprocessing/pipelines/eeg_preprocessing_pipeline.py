@@ -23,7 +23,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ===============================================================================
-"""Module to preprocess the CST dataset."""
+"""Module to preprocess the EEG dataset.
+
+It uses the argparse default CLI while waiting for our specific CLI module to 
+be documented"""
 
 import datetime
 import os
@@ -34,6 +37,26 @@ import mne
 import numpy as np
 import pandas as pd
 import pyprep as prep
+import argparse
+from eeg_research.preprocessing.tools import utils
+
+parser = argparse.ArgumentParser(
+                    prog='eeg_preprocessing_pipeline',
+                    description="""
+    This code uses different preprocessing methods/techniques to prepare EEG
+    data. 
+                    """,
+                    epilog="""
+    The preprocessing methods has to be sepcified by by calling --methods
+    when calling the script. It can be several methods, names have to be
+    separated by a comma. Beware the order matters
+    """)
+
+parser.add_argument('reading_filename')
+parser.add_argument('saving_filename')
+parser.add_argument('--methods',
+                    nargs='*')
+kwargs_namespace = parser.parse_args()
 
 def trackcalls(func):
     @functools.wraps(func)
@@ -48,7 +71,6 @@ class MissingStepError(Exception):
         self.message = message
     def __str__(self):
         return self.message
-
 
 class EEGpreprocessing:
     """Class that wrap several preprocessing techniques.
@@ -68,6 +90,8 @@ class EEGpreprocessing:
         """
         self.eeg_filename = eeg_filename
         self.raw = mne.io.read_raw(eeg_filename, preload=True)
+        channels_map = utils.map_channel_type(self.raw)
+        self.raw = utils.set_channel_types(self.raw, channels_map)
 
     def set_annotations_to_raw(
         self,
@@ -164,11 +188,10 @@ class EEGpreprocessing:
         Returns:
             EEGpreprocessing object
         """
-        if self.montage.has_been_called:
+        if self.set_montage.has_been_called:
             asr_obj = asr.ASR(sfreq=self.raw.info["sfreq"], cutoff=10)
             asr_obj.fit(self.raw)
             self.raw = asr_obj.transform(self.raw)
-            self.raw.set_annotations(self.annotations)
             return self
         else:
             raise MissingStepError(
@@ -183,3 +206,23 @@ class EEGpreprocessing:
         """
         mne.export.export_raw(filename, self.raw)
         return self
+
+def main(reading_filename: str | os.PathLike, 
+         saving_filename: str | os.PathLike,
+         methods: list[str]):
+    preprocess = EEGpreprocessing(reading_filename)
+    existing_method = [cl_method for cl_method in dir(preprocess)
+                    if not cl_method.startswith('__')]
+    methods.insert(0,'set_montage')
+    for method in methods:
+        if method in existing_method:
+            getattr(preprocess, method)()
+        else:
+            raise AttributeError(f"""`
+Wrong input method name. Should be one of the following:
+{"\n".join(existing_method)}
+""")
+    preprocess.save(saving_filename)
+
+if __name__ == "__main__":
+    main(**kwargs_namespace.__dict__)
