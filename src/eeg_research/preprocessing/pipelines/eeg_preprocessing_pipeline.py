@@ -27,6 +27,7 @@
 
 import datetime
 import os
+import functools
 
 import asrpy as asr
 import mne
@@ -34,38 +35,57 @@ import numpy as np
 import pandas as pd
 import pyprep as prep
 
+def trackcalls(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        wrapper.has_been_called = True
+        return func(*args, **kwargs)
+    wrapper.has_been_called = False
+    return wrapper
 
-class CSTpreprocessing:
-    """Class to preprocess the CST dataset.
+class MissingStepError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+    def __str__(self):
+        return self.message
+
+
+class EEGpreprocessing:
+    """Class that wrap several preprocessing techniques.
 
     This class is a wrapper around the pyprep and asrpy pipelines and other
-    preprocessing steps. It is designed to be used with the CST dataset with its
-    specificities.
+    preprocessing steps.
     """
 
     def __init__(
-        self, eeg_filename: str | os.PathLike, events_filename: str | os.PathLike
+        self, 
+        eeg_filename: str | os.PathLike 
     ) -> None:
-        """Constructor for the CSTpreprocessing object.
+        """Constructor for the EEGpreprocessing object.
 
         Args:
             eeg_filename (str or os.PathLike): the path to the EEG file
-            events_filename (str or os.PathLike): the path to the events file
         """
         self.eeg_filename = eeg_filename
-        self.events_filename = events_filename
         self.raw = mne.io.read_raw(eeg_filename, preload=True)
-        self.events = pd.read_csv(events_filename)
 
-    def set_annotations_to_raw(self) -> "CSTpreprocessing":
+    def set_annotations_to_raw(
+        self,
+        events_filename: str | os.PathLike
+        ) -> "EEGpreprocessing":
         """Automatically set the annotations on the raw object.
 
         It takes care of the subtelties of the CST dataset. It handles correctly
         the timestamps and the timezone set.
 
+        Args:
+            events_filename (str of os.PathLike): the path to the events file 
+                                                  saved in a tsv or csv format
+
         Returns:
             self
         """
+        self.events = pd.read_csv(events_filename)
         events_renamed = self.events.copy()
         events_renamed.loc[
             events_renamed["StimMarkers_alpha"].str.contains("Crash"),
@@ -93,50 +113,69 @@ class CSTpreprocessing:
         self.raw.set_annotations(self.annotations)
         return self
 
-    def set_montage(self) -> "CSTpreprocessing":
+    @trackcalls
+    def set_montage(self,
+                    montage: str = "easycap-M1") -> "EEGpreprocessing":
         """Wrapper around mne.channels.make_standard_montage('easycap-M1').
 
         The montage is hardcoded to 'easycap-M1' because it is the one used in
         the CST dataset.
+        
+        Args:
+            montage (str): The montage name. Has to be one among the known
+                           standard montage in MNE. It is possible to get all
+                           possible values by running: 
+                           `mne.channels.get_builtin_montages()`
 
         Returns:
-             CSTpreprocessing object
+             EEGpreprocessing object
         """
-        self.montage = mne.channels.make_standard_montage("easycap-M1")
+        self.montage = mne.channels.make_standard_montage(montage)
         self.raw.set_montage(self.montage)
         return self
 
-    def run_prep(self) -> "CSTpreprocessing":
+    def run_prep(self) -> "EEGpreprocessing":
         """Run the pyprep pipeline on the raw object.
 
         Returns:
-            CSTpreprocessing object
+            EEGpreprocessing object
         """
-        prep_params = {
-            "ref_chs": "eeg",
-            "reref_chs": "eeg",
-            "line_freqs": np.arange(60, self.raw.info["sfreq"] / 2, 60),
-        }
-        prep_obj = prep.PrepPipeline(
-            self.raw, montage=self.montage, prep_params=prep_params
-        )
-        prep_obj.fit()
-        self.raw = prep_obj.raw_eeg
-        return self
+        if self.set_montage.has_been_called:
+            prep_params = {
+                "ref_chs": "eeg",
+                "reref_chs": "eeg",
+                "line_freqs": np.arange(60, self.raw.info["sfreq"] / 2, 60),
+            }
+            prep_obj = prep.PrepPipeline(
+                self.raw, montage=self.montage, prep_params=prep_params
+            )
+            prep_obj.fit()
+            self.raw = prep_obj.raw_eeg
+            return self
+        
+        else:
+            raise MissingStepError(
+                "You must set a montage before. Please run `set_montage`"
+                )
 
-    def run_asr(self) -> "CSTpreprocessing":
+    def run_asr(self) -> "EEGpreprocessing":
         """Run the asrpy pipeline on the raw object.
 
         Returns:
-            CSTpreprocessing object
+            EEGpreprocessing object
         """
-        asr_obj = asr.ASR(sfreq=self.raw.info["sfreq"], cutoff=10)
-        asr_obj.fit(self.raw)
-        self.raw = asr_obj.transform(self.raw)
-        self.raw.set_annotations(self.annotations)
-        return self
+        if self.montage.has_been_called:
+            asr_obj = asr.ASR(sfreq=self.raw.info["sfreq"], cutoff=10)
+            asr_obj.fit(self.raw)
+            self.raw = asr_obj.transform(self.raw)
+            self.raw.set_annotations(self.annotations)
+            return self
+        else:
+            raise MissingStepError(
+                "You must set a montage before. Please run `set_montage`"
+            )
 
-    def save(self, filename: str | os.PathLike) -> "CSTpreprocessing":
+    def save(self, filename: str | os.PathLike) -> "EEGpreprocessing":
         """Save the data.
 
         Args:
