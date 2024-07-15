@@ -41,7 +41,7 @@ import numpy as np
 import pandas as pd
 import pyprep as prep
 
-from eeg_research.preprocessing.tools import utils
+from eeg_research.preprocessing.tools import utils, blinks_remover
 
 ParamType = ParamSpec('ParamType')
 ReturnType = TypeVar('ReturnType')
@@ -161,6 +161,19 @@ class EEGpreprocessing:
         self.raw.set_montage(self.montage)
         return self
 
+    def remove_blinks(self) -> "EEGpreprocessing":
+        """remove blinks from the EEG signal by using SSP projector.
+
+        Returns:
+            EEGpreprocessing instance 
+        """
+        if self.set_montage.has_been_called: # type: ignore[attr-defined]
+            remover = blinks_remover.BlinksRemover(self.raw)
+            remover.remove_blinks()
+            self.raw = remover.blink_removed_raw
+        
+        return self
+        
     def run_prep(self) -> "EEGpreprocessing":
         """Run the pyprep pipeline on the raw object.
 
