@@ -96,6 +96,20 @@ class EEGpreprocessing:
         channels_map = utils.map_channel_type(self.raw)
         self.raw = utils.set_channel_types(self.raw, channels_map)
 
+    def annotate_muscle(self):
+        """
+        muscle_annotations, self.muscle_z_score = mne.preprocessing.annotate_muscle_zscore(
+            self.raw, 
+            threshold=4, 
+            ch_type='eeg', 
+            min_length_good=0.1, 
+            filter_freq=(110, 140), 
+            n_jobs=None, 
+            verbose=None
+            )
+        self.raw.set_annotations(self.raw.annotations + muscle_annotations)
+        return self
+    
     def set_annotations_to_raw(
         self,
         events_filename: str | os.PathLike
