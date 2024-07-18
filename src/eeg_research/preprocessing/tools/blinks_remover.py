@@ -30,13 +30,13 @@
 import os
 
 import mne
-
+from eeg_research.preprocessing.tools import utils
 
 class BlinksRemover:
     """Instance for removing blinks from EEG data."""
 
     def __init__(self, raw: mne.io.Raw,   # noqa: ANN204
-                 channels: list[str] = ['Fp1', 'Fp2']):
+                 eog_channels: list[str] = ['Fp1', 'Fp2']):
         """Initialize BlinksRemover instance.
 
         Args:
@@ -46,7 +46,10 @@ class BlinksRemover:
                                             Defaults to ['Fp1', 'Fp2'].
         """
         self.raw = raw
-        self.channels = channels
+        self.eog_channels = eog_channels
+        channel_map = utils.map_channel_type(self.raw)
+        self.raw = utils.set_channel_types(self.raw, channel_map=channel_map)
+
     
     def _find_blinks(self) -> "BlinksRemover":
         """Helper for automatically finding blinks using mne functions.
@@ -55,13 +58,13 @@ class BlinksRemover:
             BlinksRemover: _description_
         """
         self.eog_evoked = mne.preprocessing.create_eog_epochs(
-            self.raw, ch_name = self.channels
+            self.raw, ch_name = self.eog_channels
             ).average()
         self.eog_evoked.apply_baseline((None, None))
         return self
     
     def plot_removal_results(self, 
-                             saving_filename: str | os.PathLike
+                             saving_filename: str | os.PathLike | None = None
                              ) ->"BlinksRemover":
         """Plot the result after removing the blinks.
 
@@ -78,7 +81,7 @@ class BlinksRemover:
         return figure
     
     def plot_blinks_found(self, 
-                          saving_filename: str | os.PathLike
+                          saving_filename: str | os.PathLike | None = None
                           ) ->"BlinksRemover":
         """Plot the blink automatically found.
 
@@ -108,7 +111,7 @@ class BlinksRemover:
             n_eeg=1,
             reject=None,
             no_proj=True,
-            ch_name = self.channels
+            ch_name = self.eog_channels
         )
         self.blink_removed_raw = self.raw.copy()
         self.blink_removed_raw.add_proj(self.eog_projs).apply_proj()
