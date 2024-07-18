@@ -25,7 +25,52 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ===============================================================================
 
-"""CLI for processing and cleaning EEG data in BIDS format."""
+"""EEG-fMRI Cleaning Pipeline.
+
+This pipeline is designed to preprocess and clean EEG data that has been recorded
+simultaneously with fMRI scans. The presence of the fMRI scanner introduces significant
+artifacts into the EEG data, which can obscure the underlying neural signals. This
+script implements a series of steps to mitigate these artifacts and enhance the quality
+of the EEG data for further analysis.
+
+Key Features:
+- Gradient Artifact Removal: Implements ---FILL IN HERE--- to minimize the impact of
+gradient artifacts caused by the MR scanner.
+- Ballistocardiogram (BCG) Artifact Correction: Utilizes ---FILL IN HERE--- to identify
+and remove artifacts related to cardiac activity.
+- Quality Control: Offers a series of checks and visualizations to assess the
+effectiveness of artifact removal and the overall quality of the EEG data
+post-cleaning.
+- Interactive Menu: Provides an interactive menu for users to select specific cleaning
+steps and configure parameters, making the pipeline more intuitive and user-friendly to
+navigate.
+- Automated Workflow: Supports command-line arguments for batch processing and
+automation.
+
+Usage:
+The script operates within a BIDS (Brain Imaging Data Structure) environment, requiring
+the EEG data to be organized according to BIDS standards. Users can run the script in
+an interactive mode, which presents a menu for selecting the desired cleaning
+procedures and specifying any relevant parameters. Alternatively, the script can be
+executed with predefined arguments for a more automated workflow, suitable for batch
+processing or integration into larger data processing pipelines.
+
+Output:
+The script outputs cleaned EEG data files, ready for further analysis or visualization.
+Additionally, it prints logs and reports detailing the cleaning process, which can
+be used for quality assurance and documentation purposes.
+
+Intended Users:
+This script is intended for neuroscientists, clinicians, and researchers working with
+simultaneous EEG-fMRI data. It requires a basic understanding of EEG data processing
+and familiarity with Python programming.
+
+Note:
+The effectiveness of the artifact removal and data cleaning procedures can vary
+depending on the specific characteristics of the EEG and fMRI data. Users are
+encouraged to visually inspect the data at various stages of the preprocessing pipeline
+and adjust the cleaning parameters as necessary to achieve optimal results.
+"""
 
 from eeg_research.cli.tools.bids_parser import BIDSParser
 from eeg_research.cli.tools.interactive_menu import InteractiveMenu
@@ -46,7 +91,6 @@ def main() -> None:
         "qc": "Quality Control",
     }
 
-    # If the user wants to run the interactive menu
     if parser.args.interactive:
         # If script flags are provided, preselect the scripts based on the flags
         preselection = [
@@ -65,13 +109,11 @@ def main() -> None:
         )
         selected_scripts = menu.get_selected_items()
 
-        # Create a BIDSLayout object for the data folder with given entities
         layout = parser.update_layout(parser.entities)
 
-        # Get all entities associated with the data folder
         available_entities = layout.get_entities()
 
-        # For each entity, get the available options and ask the user to select some
+        # For each entity, get the available options and ask the user to select
         for entity in parser.entities.keys():
             # Skip if the entity is not available or already selected
             if (
@@ -84,7 +126,7 @@ def main() -> None:
             # If there is only one option, select it automatically
             if len(menu_entries) == 1:
                 parser.entities[entity] = menu_entries[0]
-            # If there are multiple options, ask the user to select some
+            # If there are multiple options, ask the user to select
             elif len(menu_entries) > 1:
                 menu = InteractiveMenu(
                     menu_entries=menu_entries,
@@ -100,7 +142,6 @@ def main() -> None:
         # Get the files based on the selected entities
         files = parser.layout.get(return_type="file", **selected_entities)
 
-    # If the user does not want to run the interactive menu
     else:
         # Select the scripts based on the flags
         selected_scripts = [

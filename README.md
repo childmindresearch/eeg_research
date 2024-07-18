@@ -1,14 +1,4 @@
 [![DOI](https://zenodo.org/badge/657341621.svg)](https://zenodo.org/doi/10.5281/zenodo.10383685)
-# Todo
-
-- [x] Run `setup_template.py` to initialize the repository.
-- [ ] Replace the content of this `README.md` with details specific to your project.
-- [x] Install the `pre-commit` hooks to ensure code quality on each commit.
-- [ ] Revise SECURITY.md to reflect supported versions or remove it if not applicable.
-- [x] Remove the placeholder src and test files, these are there merely to show how the CI works.
-- [x] If it hasn't already been done for your organization/acccount, grant third-party app permissions for CodeCov.
-- [x] To set up an API documentation website, after the first successful build, go to the `Settings` tab of your repository, scroll down to the `GitHub Pages` section, and select `gh-pages` as the source. This will generate a link to your API docs.
-- [x] Update stability badge in `README.md` to reflect the current state of the project. A list of stability badges to copy can be found [here](https://github.com/orangemug/stability-badges). The [node documentation](https://nodejs.org/docs/latest-v20.x/api/documentation.html#documentation_stability_index) can be used as a reference for the stability levels.
 
 # EEG research
 
@@ -19,4 +9,74 @@
 [![LGPL--3.0 License](https://img.shields.io/badge/license-LGPL--3.0-blue.svg)](https://github.com/childmindresearch/eeg_research/blob/main/LICENSE)
 [![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/eeg_research)
 
-The purpose of this monorepository is to group all software tools and pipelines related to EEG (experiment, cleaning, analysis etc.)
+The purpose of this monorepository is to group all software tools and pipelines related to EEG (experiment, cleaning, analysis etc.). This repository is maintained by Child Mind Institute.
+
+This library operates within a **BIDS** ([Brain Imaging Data Structure](https://bids.neuroimaging.io/)) environment, requiring the EEG data to be organized according to BIDS standards.
+
+## What is BIDS?
+
+The Brain Imaging Data Structure (BIDS) is a standard for organizing and describing neuroimaging data. BIDS datasets organize data into a series of files and folders, with each file and folder name providing important information about the data it contains. This standardization makes it easier to share and analyze data across different labs and research groups.
+
+## Features
+
+- EEG-fMRI cleaning pipeline:
+    - **Gradient Artifact Removal**: Implements *FILL IN HERE* to minimize the impact of gradient artifacts caused by the radiofrequency pulses in the MR scanner.
+    - **Ballistocardiogram (BCG) Artifact Correction**: Utilizes *FILL IN HERE* to identify and remove artifacts related to cardiac activity.
+    - **Quality Control**: Offers a series of checks and visualizations to assess the effectiveness of artifact removal and the overall quality of the EEG data post-cleaning.
+    - **Interactive Menu**: Provides an interactive menu for users to select specific cleaning steps and configure parameters, making the pipeline more intuitive and user-friendly to navigate.
+    - **Automated Workflow**: Allows users to run the cleaning pipeline with predefined arguments for a more automated and streamlined process, ideal for batch processing multiple subjects, sessions, or tasks.
+
+- *PLACEHOLDER PIPELINE*:
+    - *FILL IN HERE*
+
+## Requirements
+
+To use this library, following dependencies will be installed on your system:
+
+- [Python](https://www.python.org/downloads/release/python-3120/) (~3.12)
+- [numpy](https://pypi.org/project/numpy/) (^1.26)
+- [scipy](https://pypi.org/project/scipy/) (^1.14.0)
+- [mne](https://pypi.org/project/mne/) (^1.7.1)
+- [matplotlib](https://pypi.org/project/matplotlib/) (^3.8.4)
+- [pybids](https://pypi.org/project/pybids/) (^0.16.4)
+- [asrpy](https://pypi.org/project/asrpy/) (^0.0.3)
+- [pyprep](https://pypi.org/project/pyprep/) (^0.4.3)
+- [neurokit2](https://pypi.org/project/neurokit2/) (^0.2.7)
+- [pybv](https://pypi.org/project/pybv/) (^0.7.5)
+- [simple-term-menu](https://pypi.org/project/simple-term-menu/) (^1.6.4)
+- [eeglabio](https://pypi.org/project/eeglabio/) (^0.0.2.post4)
+
+## Installation
+
+Install this package via:
+
+```sh
+pip install PLACEHOLDER_NAME
+```
+
+Or get the newest development version via:
+
+```sh
+pip install git+https://github.com/childmindresearch/eeg_research
+```
+
+## Documentation
+
+The documentation for this library can be found [here](https://childmindresearch.github.io/eeg_research).
+
+
+## Quick start
+
+If you want to run the EEG-fMRI cleaning pipeline in interactive mode:
+
+```sh
+eeg_fmri_cleaning --root "path/to/your/datafolder" --interactive
+```
+
+If you want to run the EEG-fMRI cleaning pipeline with predefined arguments (subject, session, task, etc.) for a more automated workflow:
+
+```sh
+eeg_fmri_cleaning --root "path/to/your/datafolder" --subject "*" --session "*" --task "rest" --run "1-3" --extension ".vhdr" --datatype "eeg" --gradient --bcg --qc
+```
+
+See [here](https://www.youtube.com/watch?v=dQw4w9WgXcQ) for a more complete example.
