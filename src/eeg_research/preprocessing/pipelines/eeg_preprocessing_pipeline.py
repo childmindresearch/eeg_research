@@ -42,6 +42,7 @@ import pandas as pd
 import pyprep as prep
 
 from eeg_research.preprocessing.tools import blinks_remover, utils
+from eeg_research.preprocessing.tools import artifacts_annotator as annotator
 
 ParamType = ParamSpec('ParamType')
 ReturnType = TypeVar('ReturnType')
@@ -96,20 +97,6 @@ class EEGpreprocessing:
         channels_map = utils.map_channel_type(self.raw)
         self.raw = utils.set_channel_types(self.raw, channels_map)
 
-    def annotate_muscle(self):
-        """
-        muscle_annotations, self.muscle_z_score = mne.preprocessing.annotate_muscle_zscore(
-            self.raw, 
-            threshold=4, 
-            ch_type='eeg', 
-            min_length_good=0.1, 
-            filter_freq=(110, 140), 
-            n_jobs=None, 
-            verbose=None
-            )
-        self.raw.set_annotations(self.raw.annotations + muscle_annotations)
-        return self
-    
     def set_annotations_to_raw(
         self,
         events_filename: str | os.PathLike
@@ -175,6 +162,19 @@ class EEGpreprocessing:
         self.raw.set_montage(self.montage)
         return self
 
+    def annotate_artifacts(self) -> "EEGpreprocessing":
+        """Annotate on the EEG segments that are polluted by artifacts."""
+        z_annotator = annotator.ZscoreAnnotator(self.raw)
+        z_annotator.detect_muscles(filter_freq = (30,100)) #type: ignore
+        z_annotator.detect_other_artifacts(filtering=(None,8),
+                                        min_artifact_gap= 0.2,
+                                        minimum_duration=0.2)
+
+        z_annotator.merge_annotations().annotate()
+        self.raw = z_annotator.raw
+
+        return self
+        
     def remove_blinks(self) -> "EEGpreprocessing":
         """Remove blinks from the EEG signal by using SSP projector.
 
@@ -234,7 +234,7 @@ class EEGpreprocessing:
         Args:
             filename: the name of the file to save
         """
-        mne.export.export_raw(filename, self.raw)
+        mne.export.export_raw(filename, self.raw, fmt = 'edf')
         return self
 
 def main(reading_filename: str | os.PathLike, 
