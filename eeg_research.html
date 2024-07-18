@@ -21,8 +21,15 @@
 
             <h2>Contents</h2>
             <ul>
-  <li><a href="#todo">Todo</a></li>
-  <li><a href="#eeg-research">EEG research</a></li>
+  <li><a href="#eeg-research">EEG research</a>
+  <ul>
+    <li><a href="#what-is-bids">What is BIDS?</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#requirements">Requirements</a></li>
+    <li><a href="#installation">Installation</a></li>
+    <li><a href="#documentation">Documentation</a></li>
+    <li><a href="#quick-start">Quick start</a></li>
+  </ul></li>
 </ul>
 
 
@@ -43,19 +50,6 @@ eeg_research    </h1>
 
                         <div class="docstring"><p><a href="https://zenodo.org/doi/10.5281/zenodo.10383685"><img src="https://zenodo.org/badge/657341621.svg" alt="DOI" /></a></p>
 
-<h1 id="todo">Todo</h1>
-
-<ul>
-<li><input type="checkbox" class="task-list-item-checkbox" checked disabled> Run <code>setup_template.py</code> to initialize the repository.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" disabled> Replace the content of this <code>README.md</code> with details specific to your project.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" checked disabled> Install the <code>pre-commit</code> hooks to ensure code quality on each commit.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" disabled> Revise SECURITY.md to reflect supported versions or remove it if not applicable.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" checked disabled> Remove the placeholder src and test files, these are there merely to show how the CI works.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" checked disabled> If it hasn't already been done for your organization/acccount, grant third-party app permissions for CodeCov.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" checked disabled> To set up an API documentation website, after the first successful build, go to the <code>Settings</code> tab of your repository, scroll down to the <code>GitHub Pages</code> section, and select <code>gh-pages</code> as the source. This will generate a link to your API docs.</li>
-<li><input type="checkbox" class="task-list-item-checkbox" checked disabled> Update stability badge in <code>README.md</code> to reflect the current state of the project. A list of stability badges to copy can be found <a href="https://github.com/orangemug/stability-badges">here</a>. The <a href="https://nodejs.org/docs/latest-v20.x/api/documentation.html#documentation_stability_index">node documentation</a> can be used as a reference for the stability levels.</li>
-</ul>
-
 <h1 id="eeg-research">EEG research</h1>
 
 <p><a href="https://github.com/childmindresearch/eeg_research/actions/workflows/test.yaml?query=branch%3Amain"><img src="https://github.com/childmindresearch/eeg_research/actions/workflows/test.yaml/badge.svg?branch=main" alt="Build" /></a>
@@ -65,7 +59,89 @@ eeg_research    </h1>
 <a href="https://github.com/childmindresearch/eeg_research/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-LGPL--3.0-blue.svg" alt="LGPL--3.0 License" /></a>
 <a href="https://childmindresearch.github.io/eeg_research"><img src="https://img.shields.io/badge/api-docs-blue" alt="pages" /></a></p>
 
-<p>The purpose of this monorepository is to group all software tools and pipelines related to EEG (experiment, cleaning, analysis etc.)</p>
+<p>The purpose of this monorepository is to group all software tools and pipelines related to EEG (experiment, cleaning, analysis etc.). This repository is maintained by Child Mind Institute.</p>
+
+<p>This library operates within a <strong>BIDS</strong> (<a href="https://bids.neuroimaging.io/">Brain Imaging Data Structure</a>) environment, requiring the EEG data to be organized according to BIDS standards.</p>
+
+<h2 id="what-is-bids">What is BIDS?</h2>
+
+<p>The Brain Imaging Data Structure (BIDS) is a standard for organizing and describing neuroimaging data. BIDS datasets organize data into a series of files and folders, with each file and folder name providing important information about the data it contains. This standardization makes it easier to share and analyze data across different labs and research groups.</p>
+
+<h2 id="features">Features</h2>
+
+<ul>
+<li><p>EEG-fMRI cleaning pipeline:</p>
+
+<ul>
+<li><strong>Gradient Artifact Removal</strong>: Implements <em>FILL IN HERE</em> to minimize the impact of gradient artifacts caused by the radiofrequency pulses in the MR scanner.</li>
+<li><strong>Ballistocardiogram (BCG) Artifact Correction</strong>: Utilizes <em>FILL IN HERE</em> to identify and remove artifacts related to cardiac activity.</li>
+<li><strong>Quality Control</strong>: Offers a series of checks and visualizations to assess the effectiveness of artifact removal and the overall quality of the EEG data post-cleaning.</li>
+<li><strong>Interactive Menu</strong>: Provides an interactive menu for users to select specific cleaning steps and configure parameters, making the pipeline more intuitive and user-friendly to navigate.</li>
+<li><strong>Automated Workflow</strong>: Allows users to run the cleaning pipeline with predefined arguments for a more automated and streamlined process, ideal for batch processing multiple subjects, sessions, or tasks.</li>
+</ul></li>
+<li><p><em>PLACEHOLDER PIPELINE</em>:</p>
+
+<ul>
+<li><em>FILL IN HERE</em></li>
+</ul></li>
+</ul>
+
+<h2 id="requirements">Requirements</h2>
+
+<p>To use this library, following dependencies will be installed on your system:</p>
+
+<ul>
+<li><a href="https://www.python.org/downloads/release/python-3120/">Python</a> (~3.12)</li>
+<li><a href="https://pypi.org/project/numpy/">numpy</a> (^1.26)</li>
+<li><a href="https://pypi.org/project/scipy/">scipy</a> (^1.14.0)</li>
+<li><a href="https://pypi.org/project/mne/">mne</a> (^1.7.1)</li>
+<li><a href="https://pypi.org/project/matplotlib/">matplotlib</a> (^3.8.4)</li>
+<li><a href="https://pypi.org/project/pybids/">pybids</a> (^0.16.4)</li>
+<li><a href="https://pypi.org/project/asrpy/">asrpy</a> (^0.0.3)</li>
+<li><a href="https://pypi.org/project/pyprep/">pyprep</a> (^0.4.3)</li>
+<li><a href="https://pypi.org/project/neurokit2/">neurokit2</a> (^0.2.7)</li>
+<li><a href="https://pypi.org/project/pybv/">pybv</a> (^0.7.5)</li>
+<li><a href="https://pypi.org/project/simple-term-menu/">simple-term-menu</a> (^1.6.4)</li>
+<li><a href="https://pypi.org/project/eeglabio/">eeglabio</a> (^0.0.2.post4)</li>
+</ul>
+
+<h2 id="installation">Installation</h2>
+
+<p>Install this package via:</p>
+
+<div class="pdoc-code codehilite">
+<pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>PLACEHOLDER_NAME
+</code></pre>
+</div>
+
+<p>Or get the newest development version via:</p>
+
+<div class="pdoc-code codehilite">
+<pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>git+https://github.com/childmindresearch/eeg_research
+</code></pre>
+</div>
+
+<h2 id="documentation">Documentation</h2>
+
+<p>The documentation for this library can be found <a href="https://childmindresearch.github.io/eeg_research">here</a>.</p>
+
+<h2 id="quick-start">Quick start</h2>
+
+<p>If you want to run the EEG-fMRI cleaning pipeline in interactive mode:</p>
+
+<div class="pdoc-code codehilite">
+<pre><span></span><code>eeg_fmri_cleaning<span class="w"> </span>--root<span class="w"> </span><span class="s2">&quot;path/to/your/datafolder&quot;</span><span class="w"> </span>--interactive
+</code></pre>
+</div>
+
+<p>If you want to run the EEG-fMRI cleaning pipeline with predefined arguments (subject, session, task, etc.) for a more automated workflow:</p>
+
+<div class="pdoc-code codehilite">
+<pre><span></span><code>eeg_fmri_cleaning<span class="w"> </span>--root<span class="w"> </span><span class="s2">&quot;path/to/your/datafolder&quot;</span><span class="w"> </span>--subject<span class="w"> </span><span class="s2">&quot;*&quot;</span><span class="w"> </span>--session<span class="w"> </span><span class="s2">&quot;*&quot;</span><span class="w"> </span>--task<span class="w"> </span><span class="s2">&quot;rest&quot;</span><span class="w"> </span>--run<span class="w"> </span><span class="s2">&quot;1-3&quot;</span><span class="w"> </span>--extension<span class="w"> </span><span class="s2">&quot;.vhdr&quot;</span><span class="w"> </span>--datatype<span class="w"> </span><span class="s2">&quot;eeg&quot;</span><span class="w"> </span>--gradient<span class="w"> </span>--bcg<span class="w"> </span>--qc
+</code></pre>
+</div>
+
+<p>See <a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ">here</a> for a more complete example.</p>
 </div>
 
                         <input id="mod-eeg_research-view-source" class="view-source-toggle-state" type="checkbox" aria-hidden="true" tabindex="-1">
