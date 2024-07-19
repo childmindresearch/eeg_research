@@ -1,6 +1,6 @@
-[![DOI](https://zenodo.org/badge/657341621.svg)](https://zenodo.org/doi/10.5281/zenodo.10383685) fix this later
+[![DOI](https://zenodo.org/badge/657341621.svg)](https://zenodo.org/doi/10.5281/zenodo.10383685) <!-- fix this DOI later when we publish -->
 
-# EEG research
+# EEG Research @ CMI
 
 [![Build](https://github.com/childmindresearch/eeg_research/actions/workflows/test.yaml/badge.svg?branch=main)](https://github.com/childmindresearch/eeg_research/actions/workflows/test.yaml?query=branch%3Amain)
 [![codecov](https://codecov.io/gh/childmindresearch/eeg_research/branch/main/graph/badge.svg?token=22HWWFWPW5)](https://codecov.io/gh/childmindresearch/eeg_research)
