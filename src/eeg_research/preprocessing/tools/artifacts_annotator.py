@@ -62,7 +62,7 @@ class ZscoreAnnotator:
 
         return self
         
-    def detect_other_artifacts( 
+    def detect_other( 
                         self,
                         description: str = 'BAD_others',
                         channel_type: str | None ='eeg', 
@@ -192,6 +192,16 @@ class ZscoreAnnotator:
                                             duration=merged_durations,
                                             description=merged_descriptions,
                                             orig_time=self.raw.info['meas_date'])
+        return self
+        
+    def generate_mask(self) -> 'ZscoreAnnotator':
+        """Generate mask where artifacts are annotated."""
+        self.mask = np.zeros_like(self.raw.times)
+        for onset in self.artifact_annotations.onset:
+            onset_sample = onset*self.raw.info['sfreq']
+            duration_sample = onset*self.raw.info['sfreq']
+            self.mask[onset_sample:duration_sample+1] = 1
+        
         return self
         
     def compute_statistics(self) -> 'ZscoreAnnotator':
@@ -382,7 +392,6 @@ ARTIFACT ANNOTATIONS STATISTICS
         return fig
 
     # TODO
-    # - Need to add the plot and then run on data
     # - Add high frequency/high amplitude detection
     # - Add electrode level detection, stats and plot
         
