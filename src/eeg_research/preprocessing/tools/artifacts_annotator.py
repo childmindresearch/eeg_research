@@ -62,7 +62,6 @@ class ZscoreAnnotator:
 
         return self
         
-
     def detect_other_artifacts( 
                         self,
                         description: str = 'BAD_others',
