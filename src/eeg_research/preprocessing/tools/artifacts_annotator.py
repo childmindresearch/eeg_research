@@ -211,7 +211,7 @@ class ZscoreAnnotator:
                 ratio = tot_good_seconds /self.raw.times[-1]
                 ),
             tot_bad = dict(
-                number = len(index_bad),
+                number = sum(mask_containing_bad),
                 seconds = tot_bad_seconds,
                 ratio = tot_bad_seconds /self.raw.times[-1])
         )
@@ -234,75 +234,39 @@ class ZscoreAnnotator:
         return self
 
     def print_statistics(self) -> 'ZscoreAnnotator':
-        # THIS IS STARTING TO LOOK LIKE A CLUSTERF*CK. NEED TO BE SIMPLIFIED
         """Print in the prompt the quantity of signal polluted."""
         default_message = "STATISTICS NOT COMPUTED"
         if not getattr(self, 'statistics', False):
             print(default_message)
             return self
         
-        eeg_total_duration = np.round(self.raw.times[-1],3)
-        number_bad = self.statistics.get(
-            'tot_bad',
-            dict(number = default_message)
-            ).get('number')
-        
-        tot_bad_duration = np.round(self.statistics.get( # type: ignore
-                'tot_bad',
-                dict(seconds = default_message)
-                ).get('seconds'),2) 
-        
-        tot_bad_perc = round(self.statistics.get( # type: ignore
-                'tot_bad',
-                dict(ratio = 99999)
-                ).get('ratio'),2)*100
-        
-        tot_good_duration = np.round(self.statistics.get( # type:ignore
-            'tot_good',
-            dict(seconds = default_message)
-            ).get('seconds'),2)
-        
-        tot_good_perc = np.round(self.statistics.get( # type: ignore
-            'tot_good',
-            dict(ratio = 99999)
-            ).get('ratio'),2)*100
-        
-        artifacts_type =  self.statistics.get(
-            'tot_bad',
-            dict(artifact_type = ['NOT COMPUTED'])).get(
-                'artifact_types',
-                ['NOT COMPUTED']
-                )
-        
         messages_list: list[str] = list()
         messages_list.extend(f"""
 ARTIFACT ANNOTATIONS STATISTICS
-        EEG total duration:..............  {eeg_total_duration} s
-        Number of bad segment annotated:.......  {number_bad}
-        Total duration of bad segments:..  {tot_bad_duration} s ({tot_bad_perc}%)
-        Total duration of good signal:...  {tot_good_duration} s ({tot_good_perc}%)
-        Types of artifacts annotated: {', '.join(artifacts_type)}""")
-        for artifact_type in artifacts_type:
-            this_artifact = self.statistics.get(
-                'tot_bad',
-                {artifact_type : dict(seconds = 99999,
-                                      ratio = 99999)
-                }
-                     ).get('artifact_type',
-                           dict(seconds = 99999,
-                                ratio = 99999))
+        EEG total duration:.................... {np.round(self.raw.times[-1],2)}s
+        Number of bad segment annotated:....... {
+            np.round(self.statistics['tot_bad']['number'],2)}
+        Total duration of bad segments:........ {
+            np.round(self.statistics['tot_bad']['seconds'],2)}s ({
+            np.round(self.statistics['tot_bad']['ratio']*100,2)
+            }%)
+        Total duration of good signal:......... {
+            np.round(self.statistics['tot_good']['seconds'],2)}s ({
+            np.round(self.statistics['tot_good']['ratio']*100,2)
+            }%)
+
+        Types of artifacts annotated: {', '.join(
+            self.statistics['tot_bad']['artifact_types']
+            )}""")
+
+        for artifact_type in self.statistics['tot_bad']['artifact_types']:
+            this_artifact = self.statistics[artifact_type]
             
-            this_artifact_duration = this_artifact.get('seconds')
-
-            this_artifact_ratio = np.round(self.statistics.get( # type: ignore
-                artifact_type,
-                dict(ratio = 99999)
-            ).get('ratio'),2) * 100
-
-            this_artifact_perc = this_artifact_ratio * 100
+            this_artifact_duration = np.round(this_artifact['seconds'],2)
+            this_artifact_perc = np.round(this_artifact['ratio']*100,2)
             
             messages_list.extend(f"""
-                {artifact_type} duration (sec):....{this_artifact_duration}({
+                |__{artifact_type} duration (sec): {this_artifact_duration}s ({
                 this_artifact_perc}%)""")
         
         self.statistics_message = ''.join(messages_list)

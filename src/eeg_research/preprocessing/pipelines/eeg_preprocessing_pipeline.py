@@ -272,7 +272,7 @@ if __name__ == "__main__":
         data. 
                         """,
                         epilog="""
-        The preprocessing methods has to be sepcified by by calling --methods
+        The preprocessing methods has to be sepcified by calling --methods
         when calling the script. It can be several methods, names have to be
         separated by a comma. Beware the order matters
         """)
