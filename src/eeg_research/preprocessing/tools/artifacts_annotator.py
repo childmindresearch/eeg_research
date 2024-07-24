@@ -104,9 +104,13 @@ class ZscoreAnnotator:
         if sum(artifacts) == 0:
             return mne.Annotations()
 
-        onsets = times[rising_edge_idx]
-        ends = times[falling_edge_idx]
-        durations = np.array(ends) - np.array(onsets)
+        onsets = np.array(times[rising_edge_idx])
+        ends = np.array(times[falling_edge_idx])
+        if len(ends) < len(onsets):
+            ends = np.append(ends,self.raw.times[-1])
+        
+        durations = ends - onsets 
+        
         adjusted_onsets: list = list()
         adjusted_durations: list = list()
         last_end = 0
@@ -196,14 +200,15 @@ class ZscoreAnnotator:
         
     def generate_mask(self) -> 'ZscoreAnnotator':
         """Generate mask where artifacts are annotated."""
-        self.mask = np.zeros_like(self.raw.times)
+        self.mask = np.zeros_like(self.raw.times).astype(bool)
         for onset, duration in zip(
             self.artifact_annotations.onset,
             self.artifact_annotations.duration
         ):
             onset_sample = round(onset*self.raw.info['sfreq'])
             duration_sample = round(duration*self.raw.info['sfreq'])
-            self.mask[onset_sample:onset_sample+duration_sample] = 1
+            self.mask[onset_sample:onset_sample+duration_sample] = True
+            
         
         return self
         
