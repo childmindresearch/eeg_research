@@ -166,7 +166,7 @@ class EEGpreprocessing:
         """Annotate on the EEG segments that are polluted by artifacts."""
         z_annotator = annotator.ZscoreAnnotator(self.raw)
         z_annotator.detect_muscles(filter_freq = (30,100)) #type: ignore
-        z_annotator.detect_other_artifacts(filtering=(None,8),
+        z_annotator.detect_other(filtering=(None,8),
                                         min_artifact_gap= 0.2,
                                         minimum_duration=0.2)
 
