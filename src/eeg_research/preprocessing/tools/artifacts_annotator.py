@@ -200,16 +200,14 @@ class ZscoreAnnotator:
         
     def generate_mask(self) -> 'ZscoreAnnotator':
         """Generate mask where artifacts are annotated."""
-        self.mask = np.zeros_like(self.raw.times).astype(bool)
+        self.mask = np.ones_like(self.raw.times).astype(bool)
         for onset, duration in zip(
             self.artifact_annotations.onset,
             self.artifact_annotations.duration
         ):
             onset_sample = round(onset*self.raw.info['sfreq'])
             duration_sample = round(duration*self.raw.info['sfreq'])
-            self.mask[onset_sample:onset_sample+duration_sample] = True
-            
-        
+            self.mask[onset_sample:onset_sample+duration_sample] = False
         return self
         
     def compute_statistics(self) -> 'ZscoreAnnotator':
