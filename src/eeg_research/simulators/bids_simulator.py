@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Generator, Any
+from typing import Any, Generator
 
 import mne
 import numpy as np

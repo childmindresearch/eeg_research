@@ -1,22 +1,12 @@
 """Simulate EEG data for testing purposes."""
 
-import json
-import shutil
-import tempfile
-from pathlib import Path
-from typing import Any
-
 import mne
 import neurokit2 as nk
 import numpy as np
-import pandas as pd
 from mne import create_info
 from mne.io import RawArray
 
-from eeg_research.simulators.path_handler import DirectoryTree
-
 # TODO:
-#   - refactor the eeg dataset generation with the newly populate labels method
 #   - add the simulation of:
 #       - EOG
 #       - gradient artifacts
