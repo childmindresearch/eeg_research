@@ -2,11 +2,12 @@
 
 import argparse
 import re
+import os
 from pathlib import Path
 
 import bids
 
-def parse_arguments() -> argparse.Namespace:
+def bids_args_parser() -> dict:
     """Parse command line arguments."""
     # Create the parser with RawTextHelpFormatter so that newlines are preserved
     parser = argparse.ArgumentParser(
@@ -134,34 +135,61 @@ def parse_arguments() -> argparse.Namespace:
             "--interactive, --gradient, --bcg, --qc"
         )
 
-    return args
+    return vars(args)
 
-class BIDSParser:
+class BIDSCreator:
     """A class to parse BIDS entities."""
 
-    def __init__(self) -> None:
+
+    def __init__(self, 
+                 **kwargs: dict) -> None:
         """Initialize the BIDSParser object.
 
         It parses command-line arguments, sets the reading root, indexer, layout,
         and entities.
+
+        Args:
+            **kwargs (dict): keywords arguments to correctly
+
         """
-        self.args = parse_arguments()
+        for attribute_name, attribute_value in kwargs.items():
+            setattr(self, attribute_name, attribute_value)
+        self._set_default_attributes()
         self.reading_root = self._set_reading_root()
         self.indexer = bids.BIDSLayoutIndexer()
         self.layout = self._set_layout(self.indexer)
         self.entities = self._set_entities()
-
-
+    
+    def _set_default_attributes(self) -> 'BIDSCreator':
+        attributes_list = [
+            "root",
+            "datafolder",
+            "subject",
+            "session",
+            "run",
+            "task",
+            "extension",
+            "datatype",
+            "suffix",
+            "description"
+        ] 
+        
+        for attribute in attributes_list:
+            if not getattr(self, attribute, False):
+                setattr(self,attribute, None)
+        
+        return self
+            
     def _set_reading_root(self) -> Path:
         """Set the reading root based on the provided arguments."""
-        if self.args.datafolder is None:
-            return Path(self.args.root)
+        if self.datafolder is None:
+            return Path(self.root)
         else:
-            return Path(self.args.root) / self.args.datafolder
+            return Path(self.root) / self.datafolder
 
     def _set_layout(self, indexer: bids.BIDSLayoutIndexer) -> bids.BIDSLayout:
         """Set the BIDS layout with the given indexer based on args.datafolder."""
-        if self.args.datafolder is None or "derivatives" not in self.args.datafolder:
+        if self.datafolder is None or "derivatives" not in self.datafolder:
             return bids.BIDSLayout(root=self.reading_root, indexer=indexer)
         else:
             return bids.BIDSLayout(
@@ -170,6 +198,7 @@ class BIDSParser:
                 is_derivative=True,
                 indexer=indexer,
             )
+    
 
     def _parse_range_args(
         self, entity: str, value: str | None
@@ -189,13 +218,18 @@ class BIDSParser:
         """
         if value == "*":
             return self.layout.get(target=entity, return_type="id")
-        elif value is not None and "-" in value:
+        elif "," in value:
+            if "[" in value:
+                value = value[1:-1]       
+            return [int(idx) for idx in value.split(",")]
+            
+        elif "-" in value:
             start, end = map(lambda x: None if x == "*" else int(x), value.split("-"))
 
             ids_str = self.layout.get(target=entity, return_type="id")
 
             try:
-                ids_int = [int(id) for id in ids_str]
+                ids_int = [int(idx) for idx in ids_str]
             except ValueError:
                 raise ValueError(
                     f"Range not valid for '{entity}' as it contains non-integers. "
@@ -219,8 +253,8 @@ class BIDSParser:
 
             ids_in_range = [
                 ids_str[i]
-                for i, id in enumerate(ids_int)
-                if (start is None or id >= start) and (end is None or id <= end)
+                for i, idx in enumerate(ids_int)
+                if (start is None or idx >= start) and (end is None or idx <= end)
             ]
 
             if not ids_in_range:
@@ -250,11 +284,11 @@ class BIDSParser:
         ]
 
         entities = {
-            name: self._parse_range_args(name, getattr(self.args, name))
-            for name in entity_names
+            name: self._parse_range_args(name, getattr(self, name))
+            for name in entity_names if getattr(self,name)
         }
 
-        entities.update({"description": self.args.description})
+        entities.update({"description": self.description})
 
         return entities
 
