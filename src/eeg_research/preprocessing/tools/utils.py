@@ -142,21 +142,21 @@ def map_channel_type(raw: mne.io.Raw) -> dict:
     Returns:
         dict: dictionary of channel type to map into `raw.set_channel_types` method
     """
-    channels_mapping = dict()
+    channels_map = dict()
     for ch_type in ["ecg", "eog"]:
         ch_name_in_raw = find_real_channel_name(raw, ch_type)
         if ch_name_in_raw:
             if len(ch_name_in_raw) == 1:
-                channels_mapping.update({ch_name_in_raw[0]: ch_type})
+                channels_map.update({ch_name_in_raw[0]: ch_type})
             elif len(ch_name_in_raw) > 1:
                 for name in ch_name_in_raw:
-                    channels_mapping.update({name: ch_type})
+                    channels_map.update({name: ch_type})
         else:
             print(f"No {ch_type.upper()} channel found.")
             if ch_type == "eog":
                 print("Fp1 and Fp2 will be used for EOG signal detection")
 
-    return channels_mapping
+    return channels_map
 
 
 def set_channel_types(raw: mne.io.Raw, channel_map: dict) -> mne.io.Raw:

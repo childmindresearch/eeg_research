@@ -41,7 +41,8 @@ import numpy as np
 import pandas as pd
 import pyprep as prep
 
-from eeg_research.preprocessing.tools import utils
+from eeg_research.preprocessing.tools import blinks_remover, utils
+from eeg_research.preprocessing.tools import artifacts_annotator as annotator
 
 ParamType = ParamSpec("ParamType")
 ReturnType = TypeVar("ReturnType")
@@ -163,6 +164,32 @@ class EEGpreprocessing:
         self.raw.set_montage(self.montage)
         return self
 
+    def annotate_artifacts(self) -> "EEGpreprocessing":
+        """Annotate on the EEG segments that are polluted by artifacts."""
+        z_annotator = annotator.ZscoreAnnotator(self.raw)
+        z_annotator.detect_muscles(filter_freq = (30,100)) #type: ignore
+        z_annotator.detect_other(filtering=(None,8),
+                                        min_artifact_gap= 0.2,
+                                        minimum_duration=0.2)
+
+        z_annotator.merge_annotations().annotate()
+        self.raw = z_annotator.raw
+
+        return self
+        
+    def remove_blinks(self) -> "EEGpreprocessing":
+        """Remove blinks from the EEG signal by using SSP projector.
+
+        Returns:
+            EEGpreprocessing instance 
+        """
+        if self.set_montage.has_been_called: # type: ignore[attr-defined]
+            remover = blinks_remover.BlinksRemover(self.raw)
+            remover.remove_blinks()
+            self.raw = remover.blink_removed_raw
+        
+        return self
+        
     def run_prep(self) -> "EEGpreprocessing":
         """Run the pyprep pipeline on the raw object.
 
@@ -209,7 +236,7 @@ class EEGpreprocessing:
         Args:
             filename: the name of the file to save
         """
-        mne.export.export_raw(filename, self.raw)
+        mne.export.export_raw(filename, self.raw, fmt = 'edf')
         return self
 
 
@@ -251,8 +278,8 @@ if __name__ == "__main__":
         This code uses different preprocessing methods/techniques to prepare EEG
         data.
                         """,
-        epilog="""
-        The preprocessing methods has to be sepcified by by calling --methods
+                        epilog="""
+        The preprocessing methods has to be sepcified by calling --methods
         when calling the script. It can be several methods, names have to be
         separated by a comma. Beware the order matters
         """,

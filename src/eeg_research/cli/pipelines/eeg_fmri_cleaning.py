@@ -72,7 +72,7 @@ encouraged to visually inspect the data at various stages of the preprocessing p
 and adjust the cleaning parameters as necessary to achieve optimal results.
 """
 
-from eeg_research.cli.tools.bids_parser import BIDSParser
+from eeg_research.cli.tools.bids_parser import BIDSCreator, bids_args_parser
 from eeg_research.cli.tools.interactive_menu import InteractiveMenu
 from eeg_research.preprocessing.pipelines.bcg_cleaning_pipeline import clean_bcg
 from eeg_research.preprocessing.pipelines.gradient_cleaning_pipeline import (
@@ -83,7 +83,8 @@ from eeg_research.preprocessing.tools.utils import read_raw_eeg, save_clean_eeg
 
 def main() -> None:
     """Main function."""
-    parser = BIDSParser()
+    parser = bids_args_parser()
+    bids_dataset = BIDSCreator(**parser)
 
     scripts = {
         "gradient": "Gradient Cleaning",
@@ -91,12 +92,14 @@ def main() -> None:
         "qc": "Quality Control",
     }
 
-    if parser.args.interactive:
+
+    # If the user wants to run the interactive menu
+    if parser['interactive']:
         # If script flags are provided, preselect the scripts based on the flags
         preselection = [
             i
             for i, arg in enumerate(
-                [parser.args.gradient, parser.args.bcg, parser.args.qc]
+                [parser['gradient'], parser['bcg'], parser['qc']]
             )
             if arg
         ]
@@ -109,49 +112,51 @@ def main() -> None:
         )
         selected_scripts = menu.get_selected_items()
 
-        layout = parser.update_layout(parser.entities)
+        # Create a BIDSLayout object for the data folder with given entities
+        layout = bids_dataset.update_layout(bids_dataset.entities)
 
         available_entities = layout.get_entities()
-
-        # For each entity, get the available options and ask the user to select
-        for entity in parser.entities.keys():
+        # For each entity, get the available options and ask the user to select some
+        for entity in bids_dataset.entities.keys():
             # Skip if the entity is not available or already selected
             if (
                 entity not in available_entities.keys()
-                or parser.entities[entity] is not None
+                or bids_dataset.entities[entity] is not None
             ):
                 continue
             # Get the available options for the entity
             menu_entries = getattr(layout, f"get_{entity}s")()
             # If there is only one option, select it automatically
             if len(menu_entries) == 1:
-                parser.entities[entity] = menu_entries[0]
-            # If there are multiple options, ask the user to select
+                 bids_dataset.entities[entity] = menu_entries[0]
+            # If there are multiple options, ask the user to select some
             elif len(menu_entries) > 1:
                 menu = InteractiveMenu(
                     menu_entries=menu_entries,
                     entity=entity,
                     title=f"Select the {entity}s you want to include:",
                 )
-                parser.entities[entity] = menu.get_selected_items()
+                 bids_dataset.entities[entity] = menu.get_selected_items()
                 # Update the BIDSLayout object to only include selected entities
-                layout = parser.update_layout(parser.entities)
+                layout = bids_dataset.update_layout( bids_dataset.entities)
 
         # Remove None values from the selected entities
-        selected_entities = {k: v for k, v in parser.entities.items() if v is not None}
+        selected_entities = {k: v for k, v in bids_dataset.entities.items() 
+                             if v is not None}
         # Get the files based on the selected entities
-        files = parser.layout.get(return_type="file", **selected_entities)
+        files = bids_dataset.layout.get(return_type="file", **selected_entities)
 
     else:
         # Select the scripts based on the flags
         selected_scripts = [
-            scripts[script] for script in scripts if getattr(parser.args, script)
+            scripts[script] for script in scripts if parser.get(script, False)
         ]
         # Remove None values from the entities dictionary
-        selected_entities = {k: v for k, v in parser.entities.items() if v is not None}
+        selected_entities = {k: v for k, v in bids_dataset.entities.items() 
+                             if v is not None}
 
         # Get the files based on the flags
-        files = parser.layout.get(return_type="file", **selected_entities)
+        files = bids_dataset.layout.get(return_type="file", **selected_entities)
 
     if not files:
         raise FileNotFoundError("No valid files found with the given arguments.")

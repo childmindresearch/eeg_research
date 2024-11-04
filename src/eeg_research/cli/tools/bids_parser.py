@@ -2,166 +2,194 @@
 
 import argparse
 import re
+import os
 from pathlib import Path
 
 import bids
 
+def bids_args_parser() -> dict:
+    """Parse command line arguments."""
+    # Create the parser with RawTextHelpFormatter so that newlines are preserved
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
 
-class BIDSParser:
+    parser.add_argument(
+        "--root",
+        help="Root folder.",
+        default=None,
+        required=True,
+    )
+
+    parser.add_argument(
+        "--datafolder",
+        help="Data folder to search for files. "
+        "Options are 'source', 'rawdata' or 'derivatives'.",
+        choices=["source", "rawdata", "derivatives"],
+        default=None,
+    )
+
+    parser.add_argument(
+        "--subject",
+        help="Input options for subject IDs are: \n"
+        "- '*' for all subjects \n"
+        "- 'x' for subject x \n"
+        "- 'x-y' for subjects x to y \n"
+        "- 'x-*' for subjects x to the last \n"
+        "- '*-y' for subjects from the first to y",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--session",
+        help="Input options for session IDs are: \n"
+        "- '*' for all sessions \n"
+        "- 'x' for session x \n"
+        "- 'x-y' for sessions x to y \n"
+        "- 'x-*' for sessions x to the last \n"
+        "- '*-y' for sessions from the first to y",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--run",
+        help="Input options for run IDs are: \n"
+        "- '*' for all runs \n"
+        "- 'x' for run x \n"
+        "- 'x-y' for runs x to y \n"
+        "- 'x-*' for runs x to the last \n"
+        "- '*-y' for runs from the first to y",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--task",
+        help="Input options for task IDs are: \n"
+        "- '*' for all tasks \n"
+        "- 'a' for task a",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--extension",
+        help="Input options for file extensions are: \n"
+        "- '*' for all extensions \n"
+        "- 'a' for extension a",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--datatype",
+        help="Input options for datatypes are: \n"
+        "- '*' for all datatypes \n"
+        "- 'a' for datatype a",
+        default="eeg",
+    )
+
+    parser.add_argument(
+        "--suffix",
+        help="Input options for suffixes are: \n"
+        "- '*' for all suffixes \n"
+        "- 'a' for suffix a",
+        default="eeg",
+    )
+
+    parser.add_argument(
+        "--description",
+        help="Description is only applicable to derivative data.",
+        default=None,
+    )
+    parser.add_argument(
+        "--interactive",
+        help="Run the interactive menu",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--gradient",
+        help="Clean the gradient artifacts",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--bcg",
+        help="Clean the BCG artifacts",
+        action="store_true",
+        default=False,
+    )
+
+    parser.add_argument(
+        "--qc",
+        help="Run the quality control script",
+        action="store_true",
+        default=False,
+    )
+
+    args = parser.parse_args()
+
+    if not any([args.interactive, args.gradient, args.bcg, args.qc]):
+        parser.error(
+            "Please provide at least one of the following arguments: "
+            "--interactive, --gradient, --bcg, --qc"
+        )
+
+    return vars(args)
+
+class BIDSCreator:
     """A class to parse BIDS entities."""
 
-    def __init__(self) -> None:
+
+    def __init__(self, 
+                 **kwargs: dict) -> None:
         """Initialize the BIDSParser object.
 
         It parses command-line arguments, sets the reading root, indexer, layout,
         and entities.
+
+        Args:
+            **kwargs (dict): keywords arguments to correctly
+
         """
-        self.args = self._parse_arguments()
+        for attribute_name, attribute_value in kwargs.items():
+            setattr(self, attribute_name, attribute_value)
+        self._set_default_attributes()
         self.reading_root = self._set_reading_root()
         self.indexer = bids.BIDSLayoutIndexer()
         self.layout = self._set_layout(self.indexer)
         self.entities = self._set_entities()
-
-    def _parse_arguments(self) -> argparse.Namespace:
-        """Parse command line arguments."""
-        # Create the parser with RawTextHelpFormatter so that newlines are preserved
-        parser = argparse.ArgumentParser(
-            description=__doc__, formatter_class=argparse.RawTextHelpFormatter
-        )
-
-        parser.add_argument(
-            "--root",
-            help="Root folder.",
-            default=None,
-            required=True,
-        )
-
-        parser.add_argument(
-            "--datafolder",
-            help="Data folder to search for files. "
-            "Options are 'source', 'rawdata' or 'derivatives'.",
-            choices=["source", "rawdata", "derivatives"],
-            default=None,
-        )
-
-        parser.add_argument(
-            "--subject",
-            help="Input options for subject IDs are: \n"
-            "- '*' for all subjects \n"
-            "- 'x' for subject x \n"
-            "- 'x-y' for subjects x to y \n"
-            "- 'x-*' for subjects x to the last \n"
-            "- '*-y' for subjects from the first to y",
-            default=None,
-        )
-
-        parser.add_argument(
-            "--session",
-            help="Input options for session IDs are: \n"
-            "- '*' for all sessions \n"
-            "- 'x' for session x \n"
-            "- 'x-y' for sessions x to y \n"
-            "- 'x-*' for sessions x to the last \n"
-            "- '*-y' for sessions from the first to y",
-            default=None,
-        )
-
-        parser.add_argument(
-            "--run",
-            help="Input options for run IDs are: \n"
-            "- '*' for all runs \n"
-            "- 'x' for run x \n"
-            "- 'x-y' for runs x to y \n"
-            "- 'x-*' for runs x to the last \n"
-            "- '*-y' for runs from the first to y",
-            default=None,
-        )
-
-        parser.add_argument(
-            "--task",
-            help="Input options for task IDs are: \n"
-            "- '*' for all tasks \n"
-            "- 'a' for task a",
-            default=None,
-        )
-
-        parser.add_argument(
-            "--extension",
-            help="Input options for file extensions are: \n"
-            "- '*' for all extensions \n"
-            "- 'a' for extension a",
-            default=None,
-        )
-
-        parser.add_argument(
-            "--datatype",
-            help="Input options for datatypes are: \n"
-            "- '*' for all datatypes \n"
-            "- 'a' for datatype a",
-            default="eeg",
-        )
-
-        parser.add_argument(
-            "--suffix",
-            help="Input options for suffixes are: \n"
-            "- '*' for all suffixes \n"
-            "- 'a' for suffix a",
-            default="eeg",
-        )
-
-        parser.add_argument(
-            "--description",
-            help="Description is only applicable to derivative data.",
-            default=None,
-        )
-        parser.add_argument(
-            "--interactive",
-            help="Run the interactive menu",
-            action="store_true",
-            default=False,
-        )
-
-        parser.add_argument(
-            "--gradient",
-            help="Clean the gradient artifacts",
-            action="store_true",
-            default=False,
-        )
-
-        parser.add_argument(
-            "--bcg",
-            help="Clean the BCG artifacts",
-            action="store_true",
-            default=False,
-        )
-
-        parser.add_argument(
-            "--qc",
-            help="Run the quality control script",
-            action="store_true",
-            default=False,
-        )
-
-        args = parser.parse_args()
-
-        if not any([args.interactive, args.gradient, args.bcg, args.qc]):
-            parser.error(
-                "Please provide at least one of the following arguments: "
-                "--interactive, --gradient, --bcg, --qc"
-            )
-
-        return args
-
+    
+    def _set_default_attributes(self) -> 'BIDSCreator':
+        attributes_list = [
+            "root",
+            "datafolder",
+            "subject",
+            "session",
+            "run",
+            "task",
+            "extension",
+            "datatype",
+            "suffix",
+            "description"
+        ] 
+        
+        for attribute in attributes_list:
+            if not getattr(self, attribute, False):
+                setattr(self,attribute, None)
+        
+        return self
+            
     def _set_reading_root(self) -> Path:
         """Set the reading root based on the provided arguments."""
-        if self.args.datafolder is None:
-            return Path(self.args.root)
+        if self.datafolder is None:
+            return Path(self.root)
         else:
-            return Path(self.args.root) / self.args.datafolder
+            return Path(self.root) / self.datafolder
 
     def _set_layout(self, indexer: bids.BIDSLayoutIndexer) -> bids.BIDSLayout:
         """Set the BIDS layout with the given indexer based on args.datafolder."""
-        if self.args.datafolder is None or "derivatives" not in self.args.datafolder:
+        if self.datafolder is None or "derivatives" not in self.datafolder:
             return bids.BIDSLayout(root=self.reading_root, indexer=indexer)
         else:
             return bids.BIDSLayout(
@@ -170,6 +198,7 @@ class BIDSParser:
                 is_derivative=True,
                 indexer=indexer,
             )
+    
 
     def _parse_range_args(
         self, entity: str, value: str | None
@@ -189,13 +218,18 @@ class BIDSParser:
         """
         if value == "*":
             return self.layout.get(target=entity, return_type="id")
-        elif value is not None and "-" in value:
+        elif "," in value:
+            if "[" in value:
+                value = value[1:-1]       
+            return [int(idx) for idx in value.split(",")]
+            
+        elif "-" in value:
             start, end = map(lambda x: None if x == "*" else int(x), value.split("-"))
 
             ids_str = self.layout.get(target=entity, return_type="id")
 
             try:
-                ids_int = [int(id) for id in ids_str]
+                ids_int = [int(idx) for idx in ids_str]
             except ValueError:
                 raise ValueError(
                     f"Range not valid for '{entity}' as it contains non-integers. "
@@ -219,8 +253,8 @@ class BIDSParser:
 
             ids_in_range = [
                 ids_str[i]
-                for i, id in enumerate(ids_int)
-                if (start is None or id >= start) and (end is None or id <= end)
+                for i, idx in enumerate(ids_int)
+                if (start is None or idx >= start) and (end is None or idx <= end)
             ]
 
             if not ids_in_range:
@@ -250,11 +284,11 @@ class BIDSParser:
         ]
 
         entities = {
-            name: self._parse_range_args(name, getattr(self.args, name))
-            for name in entity_names
+            name: self._parse_range_args(name, getattr(self, name))
+            for name in entity_names if getattr(self,name)
         }
 
-        entities.update({"description": self.args.description})
+        entities.update({"description": self.description})
 
         return entities
 
