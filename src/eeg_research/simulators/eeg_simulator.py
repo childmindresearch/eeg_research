@@ -54,7 +54,6 @@ def simulate_light_eeg_data(
 
     return raw
 
-
 def simulate_eeg_data(
     n_channels: int = 16,
     duration: int = 2,

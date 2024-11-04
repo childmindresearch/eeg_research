@@ -28,7 +28,7 @@ import argparse
 
 import bids
 
-from eeg_research.simulators.cleaner_pipelines import CleanerPipelines
+from eeg_research.preprocessing.pipelines.cleaner_pipelines import CleanerPipelines
 
 
 def run_cbin_cleaner(cleaner: CleanerPipelines) -> CleanerPipelines:

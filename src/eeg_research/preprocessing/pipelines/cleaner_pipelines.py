@@ -47,7 +47,7 @@ from eeg_research.preprocessing.pipelines.gradient_cleaning_pipeline import (
 )
 from eeg_research.preprocessing.tools.utils import read_raw_eeg
 from eeg_research.simulators.decorators import pipe
-from eeg_research.simulators.simulate_data import simulate_eeg_data
+from eeg_research.simulators.eeg_simulator import simulate_eeg_data
 
 
 class CleanerPipelines:

@@ -7,7 +7,7 @@ import mne
 import pandas as pd
 import pytest
 
-import eeg_research.simulators.simulate_data as script
+import eeg_research.simulators.eeg_simulator as script
 
 
 @pytest.fixture

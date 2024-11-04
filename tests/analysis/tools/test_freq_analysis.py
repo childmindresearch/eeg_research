@@ -32,7 +32,7 @@ import pytest
 from mne.io import RawArray
 
 import eeg_research.analysis.tools.freq_analysis as script
-from eeg_research.simulators.simulate_data import simulate_light_eeg_data
+from eeg_research.simulators.eeg_simulator import simulate_light_eeg_data
 
 
 @pytest.fixture

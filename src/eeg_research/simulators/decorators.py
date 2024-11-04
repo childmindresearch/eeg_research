@@ -8,7 +8,7 @@ from typing import Any, Callable, TypeVar, cast
 
 import bids
 
-from eeg_research.simulators.simulate_data import DummyDataset
+from eeg_research.simulators.eeg_simulator import DummyDataset
 
 FunctionType = TypeVar("FunctionType", bound=Callable[..., Any])
 
