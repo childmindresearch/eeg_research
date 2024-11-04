@@ -25,7 +25,7 @@
 # ===============================================================================
 """Module to preprocess the EEG dataset.
 
-It uses the argparse default CLI while waiting for our specific CLI module to 
+It uses the argparse default CLI while waiting for our specific CLI module to
 be documented
 """
 
@@ -44,11 +44,13 @@ import pyprep as prep
 from eeg_research.preprocessing.tools import blinks_remover, utils
 from eeg_research.preprocessing.tools import artifacts_annotator as annotator
 
-ParamType = ParamSpec('ParamType')
-ReturnType = TypeVar('ReturnType')
+ParamType = ParamSpec("ParamType")
+ReturnType = TypeVar("ReturnType")
 
-def trackcalls(func: Callable[ParamType, ReturnType]
-               ) -> Callable[ParamType, ReturnType]:
+
+def trackcalls(
+    func: Callable[ParamType, ReturnType],
+) -> Callable[ParamType, ReturnType]:
     """Decorator to track if a method have been called.
 
     Args:
@@ -57,13 +59,15 @@ def trackcalls(func: Callable[ParamType, ReturnType]
     Returns:
         Callable[ParamType, ReturnType]: The function decorated
     """
+
     @functools.wraps(func)
-    def wrapper(*args: ParamType.args, 
-                **kwargs: ParamType.kwargs) -> ReturnType:
+    def wrapper(*args: ParamType.args, **kwargs: ParamType.kwargs) -> ReturnType:
         setattr(wrapper, "has_been_called", True)
         return func(*args, **kwargs)
+
     setattr(wrapper, "has_been_called", False)
     return wrapper
+
 
 class MissingStepError(Exception):
     """Custom exception telling a step is missing when calling a method.
@@ -71,10 +75,13 @@ class MissingStepError(Exception):
     Args:
         Exception (_type_): _description_
     """
+
     def __init__(self, message: str) -> None:  # noqa: D107
         self.message = message
+
     def __str__(self) -> str:  # noqa: D105
         return self.message
+
 
 class EEGpreprocessing:
     """Class that wrap several preprocessing techniques.
@@ -83,10 +90,7 @@ class EEGpreprocessing:
     preprocessing steps.
     """
 
-    def __init__(
-        self, 
-        eeg_filename: str | os.PathLike 
-    ) -> None:
+    def __init__(self, eeg_filename: str | os.PathLike) -> None:
         """Constructor for the EEGpreprocessing object.
 
         Args:
@@ -98,16 +102,15 @@ class EEGpreprocessing:
         self.raw = utils.set_channel_types(self.raw, channels_map)
 
     def set_annotations_to_raw(
-        self,
-        events_filename: str | os.PathLike
-        ) -> "EEGpreprocessing":
+        self, events_filename: str | os.PathLike
+    ) -> "EEGpreprocessing":
         """Automatically set the annotations on the raw object.
 
         It takes care of the subtelties of the CST dataset. It handles correctly
         the timestamps and the timezone set.
 
         Args:
-            events_filename (str of os.PathLike): the path to the events file 
+            events_filename (str of os.PathLike): the path to the events file
                                                   saved in a tsv or csv format
 
         Returns:
@@ -142,17 +145,16 @@ class EEGpreprocessing:
         return self
 
     @trackcalls
-    def set_montage(self,
-                    montage: str = "easycap-M1") -> "EEGpreprocessing":
+    def set_montage(self, montage: str = "easycap-M1") -> "EEGpreprocessing":
         """Wrapper around mne.channels.make_standard_montage('easycap-M1').
 
         The montage is hardcoded to 'easycap-M1' because it is the one used in
         the CST dataset.
-        
+
         Args:
             montage (str): The montage name. Has to be one among the known
                            standard montage in MNE. It is possible to get all
-                           possible values by running: 
+                           possible values by running:
                            `mne.channels.get_builtin_montages()`
 
         Returns:
@@ -194,7 +196,7 @@ class EEGpreprocessing:
         Returns:
             EEGpreprocessing object
         """
-        if self.set_montage.has_been_called: # type: ignore[attr-defined]
+        if self.set_montage.has_been_called:  # type: ignore[attr-defined]
             prep_params = {
                 "ref_chs": "eeg",
                 "reref_chs": "eeg",
@@ -206,11 +208,11 @@ class EEGpreprocessing:
             prep_obj.fit()
             self.raw = prep_obj.raw_eeg
             return self
-        
+
         else:
             raise MissingStepError(
                 "You must set a montage before. Please run `set_montage`"
-                )
+            )
 
     def run_asr(self) -> "EEGpreprocessing":
         """Run the asrpy pipeline on the raw object.
@@ -218,7 +220,7 @@ class EEGpreprocessing:
         Returns:
             EEGpreprocessing object
         """
-        if self.set_montage.has_been_called: # type: ignore[attr-defined]
+        if self.set_montage.has_been_called:  # type: ignore[attr-defined]
             asr_obj = asr.ASR(sfreq=self.raw.info["sfreq"], cutoff=10)
             asr_obj.fit(self.raw)
             self.raw = asr_obj.transform(self.raw)
@@ -237,23 +239,27 @@ class EEGpreprocessing:
         mne.export.export_raw(filename, self.raw, fmt = 'edf')
         return self
 
-def main(reading_filename: str | os.PathLike, 
-         saving_filename: str | os.PathLike,
-         methods: list[str]) -> None:
+
+def main(
+    reading_filename: str | os.PathLike,
+    saving_filename: str | os.PathLike,
+    methods: list[str],
+) -> None:
     """Wrapper to access to the preprocess from CLI.
-    
+
     Args:
         reading_filename (str | PathLike): The EEG filename (full path)
         saving_filename (str | PathLike): Where to save the preprocessed data
         methods (list of str): The methods to use in the pipeline
-    
+
     Return:
         None
     """
     preprocess = EEGpreprocessing(reading_filename)
-    existing_method = [cl_method for cl_method in dir(preprocess)
-                    if not cl_method.startswith('__')]
-    methods.insert(0,'set_montage')
+    existing_method = [
+        cl_method for cl_method in dir(preprocess) if not cl_method.startswith("__")
+    ]
+    methods.insert(0, "set_montage")
     for method in methods:
         if method in existing_method:
             getattr(preprocess, method)()
@@ -264,24 +270,31 @@ Wrong input method name. Should be one of the following:
 """)
     preprocess.save(saving_filename)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-                        prog='eeg_preprocessing_pipeline',
-                        description="""
+        prog="eeg_preprocessing_pipeline",
+        description="""
         This code uses different preprocessing methods/techniques to prepare EEG
-        data. 
+        data.
                         """,
                         epilog="""
         The preprocessing methods has to be sepcified by calling --methods
         when calling the script. It can be several methods, names have to be
         separated by a comma. Beware the order matters
-        """)
+        """,
+    )
 
-    parser.add_argument('reading_filename', default = None,
-                        help = "The full path of the EEG file to process")
-    parser.add_argument('saving_filename', default = None,
-                        help = "The full path where to save the processed EEG file")
-    parser.add_argument('--methods',
-                        nargs='*')
+    parser.add_argument(
+        "reading_filename",
+        default=None,
+        help="The full path of the EEG file to process",
+    )
+    parser.add_argument(
+        "saving_filename",
+        default=None,
+        help="The full path where to save the processed EEG file",
+    )
+    parser.add_argument("--methods", nargs="*")
     kwargs_namespace = parser.parse_args()
     main(**kwargs_namespace.__dict__)

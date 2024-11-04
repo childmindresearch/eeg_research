@@ -15,7 +15,7 @@ python = "~3.12"
 simple-term-menu = "^1.6.4"
 pybids = "^0.16.4"
 mne = "^1.7.1"
-numpy = "^1.26.0"
+numpy = "^1.26"
 scipy = "^1.14.0"
 matplotlib = "^3.8.4"
 asrpy = "^0.0.3"
@@ -92,10 +92,10 @@ fixable = ["ALL"]
 unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
-[tool.ruff.lint.pydocstyle]
+[tool.ruff.pydocstyle]
 convention = "google"
 
-[tool.ruff.lint.per-file-ignores]
+[tool.ruff.per-file-ignores]
 "tests/**/*.py" = []
 
 [tool.ruff.format]
