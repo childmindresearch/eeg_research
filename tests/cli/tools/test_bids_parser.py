@@ -17,7 +17,7 @@ def mock_parser(mocker: Any, tmp_path: Path) -> script.BIDSCreator:
     args.datafolder = None
     mocker.patch("bids.BIDSLayout", return_value=mocker.MagicMock())
     parser = script.BIDSCreator(**vars(args))
-    parser.layout = mocker.MagicMock()
+    parser._layout = mocker.MagicMock()
     return parser
 
 
@@ -191,7 +191,7 @@ def test_bids_parser_parse_range_args_valid(
     expected: list[str] | str,
 ) -> None:
     """Test parse_range_arg function with valid values."""
-    mock_parser.layout.get.return_value = return_value
+    mock_parser._layout.get.return_value = return_value
     assert mock_parser._parse_range_args("entity", arg) == expected
 
 
@@ -209,7 +209,7 @@ def test_bids_parser_parse_range_args_invalid(
     mock_parser: script.BIDSCreator, return_value: list[str], arg: str
 ) -> None:
     """Test parse_range_arg function with invalid values."""
-    mock_parser.layout.get.return_value = return_value
+    mock_parser._layout.get.return_value = return_value
     with pytest.raises(ValueError):
         mock_parser._parse_range_args("entity", arg)
 

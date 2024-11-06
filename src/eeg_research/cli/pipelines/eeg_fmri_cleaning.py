@@ -144,7 +144,7 @@ def main() -> None:
         selected_entities = {k: v for k, v in bids_dataset.entities.items() 
                              if v is not None}
         # Get the files based on the selected entities
-        files = bids_dataset.layout.get(return_type="file", **selected_entities)
+        files = bids_dataset._layout.get(return_type="file", **selected_entities)
 
     else:
         # Select the scripts based on the flags
@@ -156,7 +156,7 @@ def main() -> None:
                              if v is not None}
 
         # Get the files based on the flags
-        files = bids_dataset.layout.get(return_type="file", **selected_entities)
+        files = bids_dataset._layout.get(return_type="file", **selected_entities)
 
     if not files:
         raise FileNotFoundError("No valid files found with the given arguments.")
