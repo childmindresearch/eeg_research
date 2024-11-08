@@ -71,7 +71,8 @@ class BIDSselector:
 
     def __post_init__(self) -> None:
         """Finishing some initializations."""
-        self._original_layout = bids.layout.BIDSLayout(root=self.root)
+        self._original_layout = bids.layout.BIDSLayout(root=self.root,
+                                                       validate = False)
         self.user_input = self.to_dict()
         self._standardize_attributes()
         self.set_bids_attributes()
