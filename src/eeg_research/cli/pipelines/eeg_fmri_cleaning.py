@@ -72,19 +72,20 @@ encouraged to visually inspect the data at various stages of the preprocessing p
 and adjust the cleaning parameters as necessary to achieve optimal results.
 """
 
-from eeg_research.cli.tools.bids_parser import BIDSCreator, bids_args_parser
+from eeg_research.cli.tools.bids_parser import cli_bids_arg_parser
 from eeg_research.cli.tools.interactive_menu import InteractiveMenu
 from eeg_research.preprocessing.pipelines.bcg_cleaning_pipeline import clean_bcg
 from eeg_research.preprocessing.pipelines.gradient_cleaning_pipeline import (
     clean_gradient,
 )
 from eeg_research.preprocessing.tools.utils import read_raw_eeg, save_clean_eeg
+from eeg_research.system.bids_selector import BIDSselector
 
 
 def main() -> None:
     """Main function."""
-    parser = bids_args_parser()
-    bids_dataset = BIDSCreator(**parser)
+    parser = cli_bids_arg_parser()
+    bids_dataset = BIDSselector(**parser)
 
     scripts = {
         "gradient": "Gradient Cleaning",
@@ -113,7 +114,7 @@ def main() -> None:
         selected_scripts = menu.get_selected_items()
 
         # Create a BIDSLayout object for the data folder with given entities
-        layout = bids_dataset.update_layout(bids_dataset.entities)
+        layout = bids_dataset.layout
 
         available_entities = layout.get_entities()
         # For each entity, get the available options and ask the user to select some
@@ -136,7 +137,7 @@ def main() -> None:
                     entity=entity,
                     title=f"Select the {entity}s you want to include:",
                 )
-                 bids_dataset.entities[entity] = menu.get_selected_items()
+                bids_dataset.entities[entity] = menu.get_selected_items()
                 # Update the BIDSLayout object to only include selected entities
                 layout = bids_dataset.update_layout( bids_dataset.entities)
 
