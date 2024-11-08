@@ -1,6 +1,7 @@
 """Module that host the BIDSselector class."""
 
 import os
+import re
 from dataclasses import dataclass
 
 import bids
@@ -294,7 +295,24 @@ class BIDSselector:
         Therefore, a workaround is implemented to filter out files that are not indexed.
         """
         self.set_bids_attributes()
-        return self._original_layout.get(
-            **{key: val for key, val in self.to_dict().items() if val is not None},
-            return_type="filename",
-        )
+        all_files = self._original_layout.get(return_type = "file")
+        filtered_files = self._original_layout.get(return_type="file", 
+                                         **{key: val
+                                            for key, val 
+                                            in self.to_dict().items()}
+                                         )
+
+        # Get the files to ignore
+        ignored_files = list(set(all_files) - set(filtered_files))
+
+        # Define the default ignore patterns
+        default_ignore = [
+            re.compile(r"^/(code|models|sourcedata|stimuli)"),
+            re.compile(r"/\."),
+        ]
+
+        # Create a new BIDSLayoutIndexer object to also ignored these files
+        indexer = bids.BIDSLayoutIndexer(ignore=default_ignore + ignored_files)
+
+        # Create a new BIDSLayout object with the new indexer
+        return self._set_layout(indexer)
