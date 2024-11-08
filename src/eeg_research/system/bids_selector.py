@@ -72,8 +72,7 @@ class BIDSselector:
 
     def __post_init__(self) -> None:
         """Finishing some initializations."""
-        self._original_layout = bids.layout.BIDSLayout(root=self.root,
-                                                       validate = False)
+        self._original_layout = bids.layout.BIDSLayout(root=self.root, validate=False)
         self.user_input = self.to_dict()
         self._standardize_attributes()
         self.set_bids_attributes()
@@ -94,10 +93,13 @@ class BIDSselector:
                 all_existing_values = [str(val) for val in all_existing_values]
 
                 if len(all_existing_values) <= 4:
-                    specification_str = f"({', '.join(all_existing_values)})"
+                    specification_str = (
+                        f"({ ', '.join(list(map(lambda s: str(s), 
+                        all_existing_values))) })"
+                    )
                 else:
                     specification_str = (
-                        f"({all_existing_values[0]} ... {all_existing_values[-1]})"
+                        f"({str(all_existing_values[0])} ... {str(all_existing_values[-1])})"
                     )
 
                 value_length = "All"
@@ -108,9 +110,11 @@ class BIDSselector:
 
             elif isinstance(value, list):
                 if len(value) <= 4:
-                    specification_str = f"({', '.join(value)})"
+                    specification_str = (
+                        f"({ ', '.join(list(map(lambda s: str(s),value)))})"
+                    )
                 else:
-                    specification_str = f"({value[0]} ... {value[-1]})"
+                    specification_str = f"({str(value[0])} ... {str(value[-1])})"
                 value_length = str(len(value))
 
             str_list.append(
@@ -248,10 +252,10 @@ class BIDSselector:
             IndexError: If the start or end index is out of range.
         """
         existing_values = self._original_layout.get(target=entity, return_type="id")
-            
+
         if value == "*" or value is None:
             selection = existing_values
-        
+
         elif "," in value:
             if "[" in value:
                 value = value[1:-1]
@@ -282,8 +286,7 @@ class BIDSselector:
             dict: The attribute/value pairs
         """
         for attribute, old_value in self.to_dict().items():
-            setattr(self, attribute,
-                    self._convert_input_to_list(attribute, old_value))
+            setattr(self, attribute, self._convert_input_to_list(attribute, old_value))
 
         return self
 
@@ -295,12 +298,10 @@ class BIDSselector:
         Therefore, a workaround is implemented to filter out files that are not indexed.
         """
         self.set_bids_attributes()
-        all_files = self._original_layout.get(return_type = "file")
-        filtered_files = self._original_layout.get(return_type="file", 
-                                         **{key: val
-                                            for key, val 
-                                            in self.to_dict().items()}
-                                         )
+        all_files = self._original_layout.get(return_type="file")
+        filtered_files = self._original_layout.get(
+            return_type="file", **{key: val for key, val in self.to_dict().items()}
+        )
 
         # Get the files to ignore
         ignored_files = list(set(all_files) - set(filtered_files))
@@ -316,4 +317,4 @@ class BIDSselector:
 
         # Create a new BIDSLayout object with the new indexer
         layout = self._set_layout(indexer)
-        return layout.get(return_type='filename')
+        return layout.get(return_type="filename")
