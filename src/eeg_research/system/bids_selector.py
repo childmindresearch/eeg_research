@@ -315,4 +315,5 @@ class BIDSselector:
         indexer = bids.BIDSLayoutIndexer(ignore=default_ignore + ignored_files)
 
         # Create a new BIDSLayout object with the new indexer
-        return self._set_layout(indexer)
+        layout = self._set_layout(indexer)
+        return layout.get(return_type='filename')
