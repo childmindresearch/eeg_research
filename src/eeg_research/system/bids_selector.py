@@ -270,7 +270,7 @@ class BIDSselector:
                 ]
 
         else:
-            selection = [value]
+            selection = value
 
         return selection
 
