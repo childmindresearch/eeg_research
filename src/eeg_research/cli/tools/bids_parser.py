@@ -1,13 +1,9 @@
-"""This module contains the BIDSParser class."""
+"""Module that get a selection of bids file from a regexp-like input."""
 
 import argparse
-import re
-import os
-from pathlib import Path
 
-import bids
 
-def bids_args_parser() -> dict:
+def cli_bids_arg_parser() -> dict:
     """Parse command line arguments."""
     # Create the parser with RawTextHelpFormatter so that newlines are preserved
     parser = argparse.ArgumentParser(
@@ -19,14 +15,6 @@ def bids_args_parser() -> dict:
         help="Root folder.",
         default=None,
         required=True,
-    )
-
-    parser.add_argument(
-        "--datafolder",
-        help="Data folder to search for files. "
-        "Options are 'source', 'rawdata' or 'derivatives'.",
-        choices=["source", "rawdata", "derivatives"],
-        default=None,
     )
 
     parser.add_argument(
@@ -99,30 +87,10 @@ def bids_args_parser() -> dict:
         help="Description is only applicable to derivative data.",
         default=None,
     )
+
     parser.add_argument(
         "--interactive",
         help="Run the interactive menu",
-        action="store_true",
-        default=False,
-    )
-
-    parser.add_argument(
-        "--gradient",
-        help="Clean the gradient artifacts",
-        action="store_true",
-        default=False,
-    )
-
-    parser.add_argument(
-        "--bcg",
-        help="Clean the BCG artifacts",
-        action="store_true",
-        default=False,
-    )
-
-    parser.add_argument(
-        "--qc",
-        help="Run the quality control script",
         action="store_true",
         default=False,
     )
@@ -132,192 +100,7 @@ def bids_args_parser() -> dict:
     if not any([args.interactive, args.gradient, args.bcg, args.qc]):
         parser.error(
             "Please provide at least one of the following arguments: "
-            "--interactive, --gradient, --bcg, --qc"
+            "--interactive" 
         )
 
     return vars(args)
-
-class BIDSCreator:
-    """A class to parse BIDS entities."""
-
-
-    def __init__(self, 
-                 **kwargs: dict) -> None:
-        """Initialize the BIDSParser object.
-
-        It parses command-line arguments, sets the reading root, indexer, layout,
-        and entities.
-
-        Args:
-            **kwargs (dict): keywords arguments to correctly
-
-        """
-        for attribute_name, attribute_value in kwargs.items():
-            setattr(self, attribute_name, attribute_value)
-        self._set_default_attributes()
-        self.reading_root = self._set_reading_root()
-        self.indexer = bids.BIDSLayoutIndexer()
-        self.layout = self._set_layout(self.indexer)
-        self.entities = self._set_entities()
-    
-    def _set_default_attributes(self) -> 'BIDSCreator':
-        attributes_list = [
-            "root",
-            "datafolder",
-            "subject",
-            "session",
-            "run",
-            "task",
-            "extension",
-            "datatype",
-            "suffix",
-            "description"
-        ] 
-        
-        for attribute in attributes_list:
-            if not getattr(self, attribute, False):
-                setattr(self,attribute, None)
-        
-        return self
-            
-    def _set_reading_root(self) -> Path:
-        """Set the reading root based on the provided arguments."""
-        if self.datafolder is None:
-            return Path(self.root)
-        else:
-            return Path(self.root) / self.datafolder
-
-    def _set_layout(self, indexer: bids.BIDSLayoutIndexer) -> bids.BIDSLayout:
-        """Set the BIDS layout with the given indexer based on args.datafolder."""
-        if self.datafolder is None or "derivatives" not in self.datafolder:
-            return bids.BIDSLayout(root=self.reading_root, indexer=indexer)
-        else:
-            return bids.BIDSLayout(
-                root=self.reading_root,
-                validate=False,
-                is_derivative=True,
-                indexer=indexer,
-            )
-    
-
-    def _parse_range_args(
-        self, entity: str, value: str | None
-    ) -> list[int] | str | None:
-        """Parse range argument.
-
-        Args:
-            entity: The entity to get from the layout.
-            value: The value to parse.
-
-        Returns:
-            A list of IDs or a string.
-
-        Raises:
-            ValueError: If the entity contains non-integers and a range is provided.
-            IndexError: If the start or end index is out of range.
-        """
-        if value == "*":
-            return self.layout.get(target=entity, return_type="id")
-        elif "," in value:
-            if "[" in value:
-                value = value[1:-1]       
-            return [int(idx) for idx in value.split(",")]
-            
-        elif "-" in value:
-            start, end = map(lambda x: None if x == "*" else int(x), value.split("-"))
-
-            ids_str = self.layout.get(target=entity, return_type="id")
-
-            try:
-                ids_int = [int(idx) for idx in ids_str]
-            except ValueError:
-                raise ValueError(
-                    f"Range not valid for '{entity}' as it contains non-integers. "
-                    "Please use the interactive menu to select IDs."
-                )
-
-            if start is not None and start < 1:
-                raise ValueError(
-                    f"Start value {start} for entity {entity} is not a positive "
-                    "integer."
-                )
-            if end is not None and end < 1:
-                raise ValueError(
-                    f"End value {end} for entity {entity} is not a positive integer."
-                )
-            if start is not None and end is not None and end <= start:
-                raise ValueError(
-                    f"End value {end} for entity {entity} is not greater than "
-                    f"start value {start}. Please provide a valid range."
-                )
-
-            ids_in_range = [
-                ids_str[i]
-                for i, idx in enumerate(ids_int)
-                if (start is None or idx >= start) and (end is None or idx <= end)
-            ]
-
-            if not ids_in_range:
-                raise ValueError(
-                    f"No IDs found for entity {entity} between start value {start} "
-                    f"and end value {end}."
-                )
-
-            return ids_in_range
-        else:
-            return value
-
-    def _set_entities(self) -> dict:
-        """Set the entities dictionary based on the provided arguments.
-
-        Returns:
-            A dictionary of entities.
-        """
-        entity_names = [
-            "subject",
-            "session",
-            "run",
-            "task",
-            "extension",
-            "datatype",
-            "suffix",
-        ]
-
-        entities = {
-            name: self._parse_range_args(name, getattr(self, name))
-            for name in entity_names if getattr(self,name)
-        }
-
-        entities.update({"description": self.description})
-
-        return entities
-
-    def update_layout(self, entities: dict[str, str | None]) -> bids.BIDSLayout:
-        """Update the BIDSLayout to only include given entities.
-
-        As of April 2024, BIDSLayoutIndexer's **filters argument does not work.
-        Therefore, a workaround is implemented to filter out files that are not indexed.
-        """
-        # Remove None values from the entities dictionary
-        entities = {k: v for k, v in entities.items() if v is not None}
-
-        # Get all files and filtered files
-        all_files = self.layout.get(return_type="file")
-        filtered_files = self.layout.get(return_type="file", **entities)
-
-        # Get the files to ignore
-        ignored_files = list(set(all_files) - set(filtered_files))
-
-        # Define the default ignore patterns
-        default_ignore = [
-            re.compile(r"^/(code|models|sourcedata|stimuli)"),
-            re.compile(r"/\."),
-        ]
-
-        # Create a new BIDSLayoutIndexer object to also ignored these files
-        indexer = bids.BIDSLayoutIndexer(ignore=default_ignore + ignored_files)
-
-        # Create a new BIDSLayout object with the new indexer
-        layout = self._set_layout(indexer)
-
-        return layout

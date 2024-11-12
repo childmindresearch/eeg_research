@@ -8,7 +8,8 @@ import mne
 import pandas as pd
 import pytest
 
-import eeg_research.simulators.bids_simulator as script
+import eeg_research.system.bids_simulator as script
+
 
 @pytest.fixture
 def testing_path() -> Path:

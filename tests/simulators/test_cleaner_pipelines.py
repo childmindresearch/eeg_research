@@ -14,25 +14,26 @@ import pytest
 
 import eeg_research.preprocessing.pipelines.cleaner_pipelines as script
 import eeg_research.simulators.eeg_simulator as eeg_simulator
+from eeg_research.system.bids_simulator import DummyDataset
 
 
 @pytest.fixture
-def dataset_structure() -> Generator[eeg_simulator.DummyDataset, None, None]:
+def dataset_structure() -> Generator[DummyDataset, None, None]:
     """Fixture to create a dataset object."""
     cwd = Path.cwd()
     output_dir = cwd.joinpath("data", "outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset_object = eeg_simulator.DummyDataset(root=output_dir, flush=False)
+    dataset_object = DummyDataset(root=output_dir, flush=False)
     yield dataset_object
 
 
 @pytest.fixture
-def light_dataset() -> Generator[eeg_simulator.DummyDataset, None, None]:
+def light_dataset() -> Generator[DummyDataset, None, None]:
     """Fixture to create a light dataset object."""
     cwd = Path.cwd()
     output_dir = cwd.joinpath("data", "outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset_object = eeg_simulator.DummyDataset(
+    dataset_object = DummyDataset(
         root=output_dir, task="test", flush=True
     )
     dataset_object.create_eeg_dataset(light=True, fmt="eeglab")
@@ -45,7 +46,7 @@ def heavy_dataset() -> Generator[script.CleanerPipelines, None, None]:
     cwd = Path.cwd()
     output_dir = cwd.joinpath("data", "outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
-    dataset_object = eeg_simulator.DummyDataset(root=output_dir, flush=True)
+    dataset_object = DummyDataset(root=output_dir, flush=True)
     dataset_object.create_eeg_dataset(
         fmt="eeglab",
         n_channels=16,
@@ -68,7 +69,7 @@ def heavy_dataset() -> Generator[script.CleanerPipelines, None, None]:
     yield cleaner
 
 
-def test_append_message_to_txt_file(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_append_message_to_txt_file(light_dataset: DummyDataset) -> None:
     """Test that the function appends a message to a txt file."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -81,7 +82,7 @@ def test_append_message_to_txt_file(light_dataset: eeg_simulator.DummyDataset) -
         assert f.read() == message + "\n"
 
 
-def test_make_derivatives_path(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_make_derivatives_path(light_dataset: DummyDataset) -> None:
     """Test that the function creates the derivatives path."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -98,7 +99,7 @@ def test_make_derivatives_path(light_dataset: eeg_simulator.DummyDataset) -> Non
     assert str(cleaner.derivatives_path) == str(expected_path)
 
 
-def test_make_process_path(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_make_process_path(light_dataset: DummyDataset) -> None:
     """Test that the function creates the process path."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -128,7 +129,7 @@ def test_make_process_path(light_dataset: eeg_simulator.DummyDataset) -> None:
         assert str(cleaner.process_path) == str(expected_path)
 
 
-def test_make_subject_session_path(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_make_subject_session_path(light_dataset: DummyDataset) -> None:
     """Test that the function creates the subject session path."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -158,7 +159,7 @@ def test_make_subject_session_path(light_dataset: eeg_simulator.DummyDataset) ->
         assert str(cleaner.subject_session_path) == str(expected_path)
 
 
-def test_make_modality_path(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_make_modality_path(light_dataset: DummyDataset) -> None:
     """Test that the function creates the modality path."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -189,7 +190,7 @@ def test_make_modality_path(light_dataset: eeg_simulator.DummyDataset) -> None:
         assert str(cleaner.modality_path) == str(expected_path)
 
 
-def test_task_is_test(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_task_is_test(light_dataset: DummyDataset) -> None:
     """Test that the function returns True when the task is 'test'."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -203,7 +204,7 @@ def test_task_is_test(light_dataset: eeg_simulator.DummyDataset) -> None:
 
 
 def test_sidecar_copied_at_correct_location(
-    light_dataset: eeg_simulator.DummyDataset,
+    light_dataset: DummyDataset,
 ) -> None:
     """Test that the sidecar file is copied at the correct location."""
     bids_path = light_dataset.bids_path
@@ -229,7 +230,7 @@ def test_sidecar_copied_at_correct_location(
         assert expected_filename.exists()
 
 
-def test_save_raw_method(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_save_raw_method(light_dataset: DummyDataset) -> None:
     """Test that the function saves the raw data at the correct location."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)
@@ -252,7 +253,7 @@ def test_save_raw_method(light_dataset: eeg_simulator.DummyDataset) -> None:
         assert os.path.isfile(expected_filename)
 
 
-def test_decorator_pipe(light_dataset: eeg_simulator.DummyDataset) -> None:
+def test_decorator_pipe(light_dataset: DummyDataset) -> None:
     """Test that the decorator pipe saves the raw data at the correct location."""
     bids_path = light_dataset.bids_path
     bids_layout = bids.layout.BIDSLayout(bids_path)

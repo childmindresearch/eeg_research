@@ -3,7 +3,7 @@
 
 import pytest
 
-import eeg_research.simulators.path_handler as script
+import eeg_research.system.path_handler as script
 
 
 def test_example():
