@@ -1,11 +1,27 @@
-"""Module that host the BIDSselector class."""
+"""Module that host the BIDSselector class.
+
+The pybids package (here mentioned in import bids) is a little bit too strict
+when it comes to deal with datatype that are not BIDS standardized. Often
+in derivatives we have this kind of non-standardized datatype such as
+'eyetracking' or 'brainstate' or 'respiration' that are important to separate
+as individual modality. The workaround is to either do a monkey patching to the
+package by forcing it to allow such datatype or write from scratch a separate
+class that would be less strict.
+The monkey patching is not very pythonic and not recommended in the dev community
+Because of the side effect that can induce. Therefore I am on the road to 
+write another 'bids-like' data handler (also simplier) from scratch.
+This will be useful for everybody dealing with pseudo BIDS layout with the 
+possibility to customize the queries.
+"""
+
 
 import os
 import re
+import pandas as pd
 from dataclasses import dataclass
+from pathlib import Path
 
 import bids
-
 
 @dataclass
 class BIDSselector:
@@ -61,7 +77,7 @@ class BIDSselector:
         _convert_input_to_list: Parses range or list arguments for entities.
     """
 
-    root: str | os.PathLike
+    root: Path | str | os.PathLike
     subject: str | None = None
     session: str | None = None
     task: str | None = None
@@ -70,13 +86,14 @@ class BIDSselector:
     suffix: str | None = None
     extension: str | None = None
 
-    def __post_init__(self) -> None:
-        """Finishing some initializations."""
-        self._original_layout = bids.layout.BIDSLayout(root=self.root, validate=False)
-        self.user_input = self.to_dict()
-        self._standardize_attributes()
-        self.set_bids_attributes()
+    def __post_init__(self) -> None:  # noqa: D105
+        self.root = Path(self.root)
+        for attribute in vars(self):
+            if getattr(self, attribute) is None:
+                setattr(self,attribute, '*')
 
+        self.data = self._get_layout()
+        
     def __str__(self) -> str:
         """Public string representation when calling print().
 
@@ -84,13 +101,10 @@ class BIDSselector:
             str: String representation
         """
         str_list = list()
-        for attribute, value in self.to_dict().items():
+        for attribute, value in self.file_system.items():
             if value is None:
-                all_existing_values = self._original_layout.get(
-                    return_type="id", target=attribute
-                )
-
-                all_existing_values = [str(val) for val in all_existing_values]
+                all_existing_values = [str(val)
+                                       for val in self.data[attribute].unique()]
 
                 if len(all_existing_values) <= 4:
                     specification_str = (
@@ -166,21 +180,83 @@ class BIDSselector:
 
             setattr(self, dict_key, list(set(val).union(set(dict_value))))
 
-    def to_dict(self) -> dict:
-        """When inputs are needed.
+    def _construct_path(self):
+        
+        input_path_prefix = ['sub-','ses-','']
+        input_path_elements = [self.subject, self.session, self.datatype]
 
-        Returns:
-            dict: The object attributes in a dictionary.
-        """
-        return {
-            "subject": self.subject,
-            "session": self.session,
-            "task": self.task,
-            "run": self.run,
-            "datatype": self.datatype,
-            "suffix": self.suffix,
-            "extension": self.extension,
+        path_element_list = [f'{"".join([prefix,path_element])}'
+                      for prefix, path_element in zip(
+                          input_path_prefix,
+                          input_path_elements
+                      )
+        ]
+        return Path(*path_element_list)
+    
+    def _construct_file(self):
+
+        input_file_keys = ['sub-','ses-','task-','run-','acq-','desc-','']
+        input_file_values = [
+            self.subject,
+            self.session,
+            self.task,
+            self.run,
+            self.acquisition,
+            self.description,
+            self.suffix,
+        ]
+
+        key_value_pairs = [f'{key}{value}' for key, value in zip(
+                               input_file_keys,
+                               input_file_values
+                           )
+        ]
+        
+        return Path('_'.join(key_value_pairs)).with_suffix(self.extension)
+
+    def _construct_query(self):
+        return os.fspath(self._construct_path() / self._construct_file())
+
+    def _get_layout(self) -> pd.DataFrame:
+        """Finishing some."""
+        
+        query = self._construct_query()
+        files_iterator = self.root.rglob(os.fspath(Path(*query)))
+        self.file_system = {
+            "root": [],
+            "subject": [],
+            "session": [],
+            "datatype": [],
+            "task": [],
+            "run": [],
+            "description": [],
+            "suffix": [],
+            "extension": [],
         }
+
+        for file in files_iterator:
+            self.file_system['root'].append(self.root)
+            path_parts = file.relative_to(self.root).parts
+            self.file_system['subject'].append(path_parts[0].split('-')[1])
+            self.file_system['session'].append(path_parts[1].split('-')[1])
+            self.file_system['datatype'].append(path_parts[2])
+            desired_keys = ['task','run','desc','acq']
+            
+            for file_part in file.stem.split('_'):
+                if len(file_part.split('-')) > 1:
+                    key, value = file_part.split('-') 
+                    if key in desired_keys:
+                        if key == 'desc':
+                            key = 'description'
+                        elif key == 'acq':
+                            key = 'acquisition'
+                        self.file_system[key].append(value)
+
+            self.file_system['suffix'].append(file_part)
+                    
+            self.file_system['extension'].append(file.suffix)
+
+        return pd.DataFrame(self.file_system)
 
     def _standardize_input_str(self, value: str) -> str:
         """Standardize the input string for consistency.
@@ -208,34 +284,6 @@ class BIDSselector:
                 return value.replace(prefix, "")
 
         return value
-
-    def _standardize_attributes(self) -> "BIDSselector":
-        """Remove eventual prefixes for all the arguments of the object.
-
-        Returns:
-             BIDSselector: The instance modified
-        """
-        for attribute, value in self.to_dict().items():
-            if isinstance(value, str):
-                regularized_value = self._standardize_input_str(value)
-
-            elif isinstance(value, list):
-                regularized_value = [self._standardize_input_str(val) for val in value]  # type: ignore
-            else:
-                regularized_value = value
-
-            setattr(self, attribute, regularized_value)
-
-        return self
-
-    def _set_layout(self, indexer: bids.BIDSLayoutIndexer) -> bids.BIDSLayout:
-        """Set the BIDS layout with the given indexer based on args.datafolder."""
-        return bids.BIDSLayout(
-            root=self.root,
-            validate="derivative" not in str(self.root).lower(),
-            is_derivative="derivative" in str(self.root).lower(),
-            indexer=indexer,
-        )
 
     def _convert_input_to_list(self, entity: str, value: str | None) -> list | None:
         """Parse range argument.
@@ -279,6 +327,8 @@ class BIDSselector:
 
         return selection
 
+    def select(self,
+               )
     def set_bids_attributes(self) -> "BIDSselector":
         """Set the converted values to all bids attributes.
 
