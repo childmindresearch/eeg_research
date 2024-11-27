@@ -80,18 +80,16 @@ class BIDSselector:
     root: Path | str | os.PathLike
     subject: str | None = None
     session: str | None = None
+    datatype: str | None = None
     task: str | None = None
     run: str | None = None
-    datatype: str | None = None
+    acquisition: str | None = None
+    description: str | None = None
     suffix: str | None = None
     extension: str | None = None
 
     def __post_init__(self) -> None:  # noqa: D105
         self.root = Path(self.root)
-        for attribute in vars(self):
-            if getattr(self, attribute) is None:
-                setattr(self,attribute, '*')
-
         self.data = self._get_layout()
         
     def __str__(self) -> str:
@@ -186,42 +184,61 @@ class BIDSselector:
         input_path_elements = [self.subject, self.session, self.datatype]
 
         path_element_list = [f'{"".join([prefix,path_element])}'
-                      for prefix, path_element in zip(
+                        if path_element is not None else '*'
+                        for prefix, path_element in zip(
                           input_path_prefix,
                           input_path_elements
-                      )
+                      ) 
         ]
         return Path(*path_element_list)
     
     def _construct_file(self):
 
-        input_file_keys = ['sub-','ses-','task-','run-','acq-','desc-','']
-        input_file_values = [
-            self.subject,
-            self.session,
-            self.task,
-            self.run,
-            self.acquisition,
-            self.description,
-            self.suffix,
+        attributes = [
+            ("sub-", self.subject),
+            ("ses-", self.session),
+            ("task-",self.task),
+            ("run-", self.run),
+            ("acq-", self.acquisition),
+            ("desc-",self.description),
         ]
-
-        key_value_pairs = [f'{key}{value}' for key, value in zip(
-                               input_file_keys,
-                               input_file_values
-                           )
-        ]
+            
+        if all([attribute is None for _, attribute in attributes]):
+            return '*'
         
-        return Path('_'.join(key_value_pairs)).with_suffix(self.extension)
+        first_none_replaced = False
+        parts = []
 
-    def _construct_query(self):
+        for key, value in attributes:
+            if value is not None:
+                parts.append(f"{key}{value}")
+                first_none_replaced = False
+            elif not first_none_replaced:
+                parts.append("*")
+                first_none_replaced = True
+
+        filename = "_".join(parts)
+        
+        if self.suffix is not None:
+            filename = filename + f"_{self.suffix}"
+        if self.extension is not None:
+            if not first_none_replaced and self.suffix is None:
+                filename = filename + f"*.{self.extension}"
+            else:
+                filename = filename + f".{self.extension}"
+        elif self.extension is None:
+            filename = filename + '*'
+
+        filename = filename.replace("_*_","*")
+        return filename
+
+    def _construct_glob_query(self):
         return os.fspath(self._construct_path() / self._construct_file())
 
     def _get_layout(self) -> pd.DataFrame:
         """Finishing some."""
         
-        query = self._construct_query()
-        files_iterator = self.root.rglob(os.fspath(Path(*query)))
+        files_iterator = self.root.rglob(self._construct_glob_query())
         self.file_system = {
             "root": [],
             "subject": [],
@@ -230,8 +247,10 @@ class BIDSselector:
             "task": [],
             "run": [],
             "description": [],
+            "acquisition": [],
             "suffix": [],
             "extension": [],
+            "filename": [],
         }
 
         for file in files_iterator:
@@ -241,20 +260,31 @@ class BIDSselector:
             self.file_system['session'].append(path_parts[1].split('-')[1])
             self.file_system['datatype'].append(path_parts[2])
             desired_keys = ['task','run','desc','acq']
+            file_parts = file.stem.split('_')
             
-            for file_part in file.stem.split('_'):
-                if len(file_part.split('-')) > 1:
-                    key, value = file_part.split('-') 
-                    if key in desired_keys:
-                        if key == 'desc':
-                            key = 'description'
-                        elif key == 'acq':
-                            key = 'acquisition'
-                        self.file_system[key].append(value)
 
-            self.file_system['suffix'].append(file_part)
+            for desired_key in desired_keys:
+                
+                if desired_key in file.stem:
+                    value = [
+                        part.split('-')[1] 
+                        for part in file_parts 
+                        if desired_key in part
+                    ][0]
+                else:
+                    value = None
+
+                if desired_key == 'desc':
+                    desired_key = 'description'
+                
+                elif desired_key == 'acq':
+                    desired_key = 'acquisition'
+                
+                self.file_system[desired_key].append(value)
                     
+            self.file_system['suffix'].append(file_parts[-1])
             self.file_system['extension'].append(file.suffix)
+            self.file_system['filename'].append(file)
 
         return pd.DataFrame(self.file_system)
 
@@ -327,44 +357,6 @@ class BIDSselector:
 
         return selection
 
-    def select(self,
-               )
-    def set_bids_attributes(self) -> "BIDSselector":
-        """Set the converted values to all bids attributes.
-
-        Returns:
-            dict: The attribute/value pairs
-        """
-        for attribute, old_value in self.to_dict().items():
-            setattr(self, attribute, self._convert_input_to_list(attribute, old_value))
-
-        return self
-
-    @property
-    def layout(self) -> bids.BIDSLayout:
-        """Update the BIDSLayout to only include given entities.
-
-        As of April 2024, BIDSLayoutIndexer's **filters argument does not work.
-        Therefore, a workaround is implemented to filter out files that are not indexed.
-        """
-        self.set_bids_attributes()
-        all_files = self._original_layout.get(return_type="file")
-        filtered_files = self._original_layout.get(
-            return_type="file", **{key: val for key, val in self.to_dict().items()}
-        )
-
-        # Get the files to ignore
-        ignored_files = list(set(all_files) - set(filtered_files))
-
-        # Define the default ignore patterns
-        default_ignore = [
-            re.compile(r"^/(code|models|sourcedata|stimuli)"),
-            re.compile(r"/\."),
-        ]
-
-        # Create a new BIDSLayoutIndexer object to also ignored these files
-        indexer = bids.BIDSLayoutIndexer(ignore=default_ignore + ignored_files)
-
-        # Create a new BIDSLayout object with the new indexer
-        layout = self._set_layout(indexer)
-        return layout.get(return_type="filename")
+    def select(self):
+        pass
+        
