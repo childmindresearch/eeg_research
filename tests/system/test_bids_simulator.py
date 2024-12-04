@@ -4,7 +4,7 @@
 import os
 from pathlib import Path
 
-import mne
+import mne  # type: ignore
 import pandas as pd
 import pytest
 

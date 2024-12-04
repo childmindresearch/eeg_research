@@ -1,101 +1,115 @@
-from unittest.mock import MagicMock, patch
-
 import pytest
-
-from eeg_research.system.bids_selector import BIDSselector
-
-
-@pytest.fixture
-def mock_bids_layout() -> MagicMock:
-    """Mock a BIDS layout with a simple structure for testing."""
-    # Mock a BIDS layout with a simple structure for testing
-    layout = MagicMock()
-    layout.get = MagicMock(return_value=["sub-01", "sub-02", "sub-03", "sub-04"])
-    return layout
+import pandas as pd
+from pathlib import Path
+from eeg_research.system.bids_selector import BidsArchitecture
 
 @pytest.fixture
-def bids_selector(mock_bids_layout):
-    with patch("your_module.bids.BIDSLayout", return_value=mock_bids_layout):
-        return BIDSselector(root="/mock/path")
+def sample_bids_root(tmp_path):
+    """Create a sample BIDS directory structure for testing."""
+    root = tmp_path / "bids_dataset"
+    # Create sample BIDS structure
+    for sub in ["01", "02", "03", "04"]:
+        for ses in ["01", "02", "03"]:
+            for modality in ["eeg","mri"]:
+                path = root / f"sub-{sub}" / f"ses-{ses}" / modality
+                path.mkdir(parents=True)
+                # Create sample files
+                (path / f"sub-{sub}_ses-{ses}_task-rest_run-01_desc-clean_{modality}.vhdr").touch()
+                (path / f"sub-{sub}_ses-{ses}_task-anothertask_run-01_{modality}.vhdr").touch()
+    return root
 
-def test_init(bids_selector):
-    # Test initialization and if the layout is set correctly
-    assert isinstance(bids_selector._original_layout, MagicMock)
-    assert bids_selector.user_input == {
-        "subject": None,
-        "session": None,
-        "task": None,
-        "run": None,
-        "datatype": None,
-        "suffix": None,
-        "extension": None
-    }
+@pytest.fixture
+def bids_selector(sample_bids_root):
+    """Create BidsArchitecture instance with sample data."""
+    return BidsArchitecture(root=sample_bids_root)
 
-def test_standardize_input_str(bids_selector):
-    # Test standardizing input string by removing prefixes
-    assert bids_selector._standardize_input_str("sub-01") == "01"
-    assert bids_selector._standardize_input_str("task-rest") == "rest"
-    assert bids_selector._standardize_input_str("run-02") == "02"
-    assert bids_selector._standardize_input_str("ses-01") == "01"
-
-def test_standardize_attributes(bids_selector):
-    # Test standardizing all attributes
-    bids_selector.subject = "sub-01"
-    bids_selector.session = ["ses-01", "ses-02"]
-    bids_selector._standardize_attributes()
-    assert bids_selector.subject == "01"
-    assert bids_selector.session == ["01", "02"]
-
-def test_convert_input_to_list(bids_selector):
-    # Test converting inputs to lists or ranges
-    with patch.object(bids_selector._original_layout, "get", return_value=["01", "02", "03", "04"]):
-        assert bids_selector._convert_input_to_list("subject", "01-03") == ["01", "02", "03"]
-        assert bids_selector._convert_input_to_list("subject", "01,*") == ["01", "02", "03", "04"]
-
-def test_add_method(bids_selector):
-    # Test adding two BIDSselector objects
-    other_selector = BIDSselector(root="/mock/path", subject="02", task="rest")
+def test_construct_path(bids_selector):
     bids_selector.subject = "01"
-    bids_selector.task = ["task1"]
+    bids_selector.session = "01"
+    bids_selector.datatype = "eeg"
+    path = bids_selector._construct_path()
+    assert str(path) == "sub-01/ses-01/eeg"
 
-    new_selector = bids_selector + other_selector
-    assert new_selector.subject == ["01", "02"]
-    assert new_selector.task == ["task1", "rest"]
-
-def test_to_dict(bids_selector):
-    # Test if the attributes are correctly returned in a dictionary
-    bids_selector.subject = "01"
-    bids_selector.task = "task-rest"
-    expected_dict = {
-        "subject": "01",
-        "session": None,
-        "task": "task-rest",
-        "run": None,
-        "datatype": None,
-        "suffix": None,
-        "extension": None,
-    }
-    assert bids_selector.to_dict() == expected_dict
-
-def test_set_bids_attributes(bids_selector, mock_bids_layout):
-    # Test setting BIDS attributes using mock layout data
-    bids_selector.subject = "01-*"
-    bids_selector.set_bids_attributes()
-    assert bids_selector.subject == ["01", "02", "03", "04"]
-
-def test_layout_property(bids_selector):
-    # Test layout property filters files correctly
-    with patch.object(bids_selector._original_layout, "get", return_value=["file1.nii.gz", "file2.nii.gz"]):
-        bids_selector.subject = "01"
-        files = bids_selector.layout
-        assert files == ["file1.nii.gz", "file2.nii.gz"]
-
-def test_str_method(bids_selector):
-    # Test string representation of BIDSselector object
+def test_construct_file(bids_selector):
     bids_selector.subject = "01"
     bids_selector.task = "rest"
-    with patch.object(bids_selector._original_layout, "get", return_value=["file1.nii.gz", "file2.nii.gz"]):
-        result_str = str(bids_selector)
-        assert "Subjects: 1 (01)" in result_str
-        assert "Tasks: 1 (rest)" in result_str
-        assert "Files: 2" in result_str
+    bids_selector.extension = "vhdr"
+    filename = bids_selector._construct_file()
+    assert "sub-01" in filename
+    assert "task-rest" in filename
+    assert filename.endswith(".vhdr")
+
+def test_parse_filename(bids_selector, sample_bids_root):
+    file = sample_bids_root / "sub-01/ses-01/eeg/sub-01_ses-01_task-rest_run-01_desc-clean_eeg.vhdr"
+    result = bids_selector.parse_filename(file)
+    assert result["subject"] == "01"
+    assert result["session"] == "01"
+    assert result["task"] == "rest"
+    assert result["run"] == "01"
+    assert result["description"] == "clean"
+
+def test_standardize_input_str(bids_selector):
+    assert bids_selector._standardize_input_str("sub-01") == "01"
+    assert bids_selector._standardize_input_str("ses-02") == "02"
+    assert bids_selector._standardize_input_str("task-rest") == "rest"
+    assert bids_selector._standardize_input_str("run-01") == "01"
+    assert bids_selector._standardize_input_str("test") == "test"
+
+def test_get_range(bids_selector):
+    series = pd.Series(["01", "02", "03", "04"])
+    result = bids_selector._get_range(series, "02", "04")
+    assert all(result == [False, True, True, False])
+
+def test_get_single_loc(bids_selector):
+    series = pd.Series(["01", "02", "03"])
+    result = bids_selector._get_single_loc(series, "02")
+    assert all(result == [False, True, False])
+    with pytest.raises(Exception):
+        bids_selector._get_single_loc(series, "04")
+
+def test_is_numerical(bids_selector):
+    series = pd.Series(["01", "02", "03"])
+    assert bids_selector._is_numerical(series) == True
+    series = pd.Series(["01", "abc", "03"])
+    assert bids_selector._is_numerical(series) == False
+
+def test_interpret_string(bids_selector):
+    series = pd.Series(["01", "02", "03", "04"])
+    result = bids_selector._interpret_string(series, "02-04")
+    assert all(result == [False, True, True, False])
+    with pytest.raises(ValueError):
+        bids_selector._interpret_string(series, "a-b")
+
+def test_select_unique_vals(bids_selector):
+    result = bids_selector.select(
+        subject="01",
+        session="01",
+        task="rest",
+        datatype = "eeg",
+        suffix = "eeg",
+    )
+    assert len(result) == 1
+    assert "sub-01" in str(result.iloc[0]["filename"])
+    assert "task-rest" in str(result.iloc[0]["filename"])
+
+def test_select_list_vals(bids_selector):
+    result = bids_selector.select(
+        subject=["01","02"],
+        session=["01","02"],
+        task="rest",
+        datatype = "eeg",
+        suffix = "eeg",
+    )
+    assert len(result) == 4
+    assert "sub-01" in str(result.iloc[0]["filename"])
+    assert "ses-01" in str(result.iloc[0]["filename"])
+    assert "task-rest" in str(result.iloc[0]["filename"])
+    assert "sub-01" in str(result.iloc[1]["filename"])
+    assert "ses-02" in str(result.iloc[1]["filename"])
+    assert "task-rest" in str(result.iloc[1]["filename"])
+    assert "sub-02" in str(result.iloc[2]["filename"])
+    assert "ses-01" in str(result.iloc[2]["filename"])
+    assert "task-rest" in str(result.iloc[2]["filename"])
+    assert "sub-02" in str(result.iloc[3]["filename"])
+    assert "ses-02" in str(result.iloc[3]["filename"])
+    assert "task-rest" in str(result.iloc[3]["filename"])

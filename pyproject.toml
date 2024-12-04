@@ -43,6 +43,9 @@ pythonpath = [
 testpaths = [
   "tests"
 ]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
 
 [tool.mypy]
 ignore_missing_imports = true

@@ -1,13 +1,13 @@
-"""Module that host the BIDSselector class.
+"""Module that host the BIDS architecture and selector classes.
 
-The pybids package (here mentioned in import bids) is a little bit too strict
+The pybids or mne-bids packages are a little bit too strict
 when it comes to deal with datatype that are not BIDS standardized. Often
 in derivatives we have this kind of non-standardized datatype such as
 'eyetracking' or 'brainstate' or 'respiration' that are important to separate
 as individual modality. The workaround is to either do a monkey patching to the
-package by forcing it to allow such datatype or write from scratch a separate
+packages by forcing it to allow such datatype or write from scratch a separate
 class that would be less strict.
-The monkey patching is not very pythonic and not recommended in the dev community
+The monkey patching is not very pythonic and is not recommended in the dev community
 Because of the side effect that can induce. Therefore I am on the road to 
 write another 'bids-like' data handler (also simplier) from scratch.
 This will be useful for everybody dealing with pseudo BIDS layout with the 
@@ -16,65 +16,60 @@ possibility to customize the queries.
 
 
 import os
-import re
-import pandas as pd
 from dataclasses import dataclass
+from functools import reduce
 from pathlib import Path
 
-import bids
+import pandas as pd
+
+
+def is_numerical(dataframe: pd.DataFrame, column_name: str):
+    return all(dataframe[column_name].apply(lambda string: string.isdigit()))
 
 @dataclass
-class BIDSselector:
-    """A class for flexible selection of BIDS files based on customizable criteria.
+class BidsArchitecture:
+    """A flexible and lightweight BIDS file selector.
 
-    This class allows users to select files from a BIDS dataset by specifying
-    various BIDS entities such as subject, session, task, run, and more. Users
-    can input ranges, individual IDs, or lists to customize file selection
-    without manually specifying each file. This is especially useful for large
-    datasets where the starting and ending IDs may be unknown or numerous.
+    This class provides an intuitive interface to query and select files from BIDS datasets,
+    including non-standardized derivatives. It handles custom modalities like eyetracking,
+    brainstate, or respiration data that standard BIDS tools may not support.
+
+    Key Features:
+        - Flexible file selection using wildcards and patterns
+        - Support for non-standard BIDS derivatives
+        - Simple query interface for complex file patterns
+        - Pandas DataFrame output for easy data manipulation
 
     Args:
-        root (str | os.PathLike): Root directory of the BIDS dataset.
-        subject (str | None, optional): Subject(s) to select. Can be
-            a single ID, a range (e.g., "10-100"), or '*' for all subjects.
-        session (str | None, optional): Session(s) to select. Similar
-            input options as `subject`.
-        task (str | None, optional): Task(s) to select.
-        run (str | None, optional): Run(s) to select.
-        datatype (str | None, optional): Data type(s) to select.
-        suffix (str | None, optional): File suffix(es) to select.
-        extension (str | None, optional): File extension(s) to select.
+        root (Path | str): Root directory of the BIDS dataset
+        subject (str, optional): Subject identifier (e.g. "01")
+        session (str, optional): Session identifier
+        datatype (str, optional): Data modality (e.g. "eeg", "eyetracking")
+        task (str, optional): Task identifier
+        run (str, optional): Run number
+        acquisition (str, optional): Acquisition identifier
+        description (str, optional): Description tag
+        suffix (str, optional): File suffix
+        extension (str, optional): File extension without dot
 
-    Example:
-        To select all subjects from "10" onward, specify `subject='10-*'`.
-        To select up to subject "20" only, use `subject='*-20'`. Alternatively,
-        provide a list of specific subject IDs (e.g., `subject=['10', '15', '30']`).
+    Examples:
+        >>> selector = BidsArchitecture(root="data/")
+        >>> selector = BidsArchitecture(
+        ...     root="data/",
+        ...     subject="01",
+        ...     task="rest",
+        ...     datatype="eeg"
+        ... )
 
-    Attributes:
-        user_input (dict): Dictionary of user-provided selections for various
-            BIDS entities.
-        _original_layout (bids.BIDSLayout): The original BIDS layout for
-            querying files.
-        layout (list): The BIDS layout, filtered by the current selection
-            criteria.
+    Properties:
+        files_dataframe (pd.DataFrame): Selected files with BIDS entities as columns
+        query_instruction (str): Current query pattern used for file selection
 
     Methods:
-        __post_init__: Completes initialization by regularizing attributes
-            and setting BIDS attributes based on user input.
-        __str__: Returns a string representation of the current selection
-            criteria and the number of matching files.
-        __add__: Merges selections with another BIDSselector instance or
-            dictionary.
-        to_dict: Returns the current BIDS entity attributes as a dictionary.
-        set_bids_attributes: Updates the BIDS attributes for selection.
-
-    Internal Helper Methods:
-        _regularize_input_str: Removes prefixes from entity values for
-            consistent selection.
-        _regularize_attributes: Regularizes prefixes across all BIDS
-            entities in the object.
-        _set_layout: Initializes a new BIDS layout with a specified indexer.
-        _convert_input_to_list: Parses range or list arguments for entities.
+        _construct_path(): Builds BIDS directory path pattern
+        _construct_file(): Builds BIDS filename pattern
+        _construct_glob_query(): Combines path and file patterns
+        _get_layout(): Scans filesystem and builds DataFrame
     """
 
     root: Path | str | os.PathLike
@@ -90,7 +85,7 @@ class BIDSselector:
 
     def __post_init__(self) -> None:  # noqa: D105
         self.root = Path(self.root)
-        self.data = self._get_layout()
+        self._get_layout(self._construct_glob_query())
         
     def __str__(self) -> str:
         """Public string representation when calling print().
@@ -99,43 +94,34 @@ class BIDSselector:
             str: String representation
         """
         str_list = list()
-        for attribute, value in self.file_system.items():
-            if value is None:
-                all_existing_values = [str(val)
-                                       for val in self.data[attribute].unique()]
+        print(f"Results for query: {self.query_instruction}")
+        for attribute in self.database.columns:
+            if attribute == "filename":
+                continue
 
-                if len(all_existing_values) <= 4:
-                    specification_str = (
-                        f"({ ', '.join(list(map(lambda s: str(s), 
-                        all_existing_values))) })"
-                    )
-                else:
-                    specification_str = (
-                        f"({str(all_existing_values[0])} ... {str(all_existing_values[-1])})"
-                    )
+            all_existing_values = [
+                str(val)
+                for val in self.database[attribute].unique()
+                ]
 
-                value_length = "All"
+            if len(all_existing_values) <= 4:
+                specification_str = (
+                    f"({ ', '.join([str(s) for s in all_existing_values])})"
+                )
+            else:
+                specification_str = (
+                    f"({str(all_existing_values[0])} "\
+                    f"... {str(all_existing_values[-1])})"
+                )
 
-            elif isinstance(value, str):
-                specification_str = f"({value})"
-                value_length = "1"
-
-            elif isinstance(value, list):
-                if len(value) <= 4:
-                    specification_str = (
-                        f"({ ', '.join(list(map(lambda s: str(s),value)))})"
-                    )
-                else:
-                    specification_str = f"({str(value[0])} ... {str(value[-1])})"
-                value_length = str(len(value))
+            value_length = str(len(all_existing_values))
 
             str_list.append(
                 f"{str(attribute).capitalize()}s: {value_length} "
                 f"{specification_str}"
             )
 
-        files = self.layout
-        all_str = f"{'\n'.join(str_list)}\nFiles: {len(files)}"
+        all_str = f"{'\n'.join(str_list)}\nFiles: {len(self.database)}"
         return all_str
 
     def __add__(self, other):  # noqa: ANN204, D105, ANN001
@@ -178,8 +164,15 @@ class BIDSselector:
 
             setattr(self, dict_key, list(set(val).union(set(dict_value))))
 
-    def _construct_path(self):
+    def _construct_path(self) -> Path:
+        """Build the BIDS directory path pattern.
         
+        Constructs a Path object representing the directory structure:
+        sub-{subject}/ses-{session}/{datatype}
+        
+        Returns:
+            Path: Directory path pattern with appropriate wildcards
+        """
         input_path_prefix = ['sub-','ses-','']
         input_path_elements = [self.subject, self.session, self.datatype]
 
@@ -192,7 +185,15 @@ class BIDSselector:
         ]
         return Path(*path_element_list)
     
-    def _construct_file(self):
+    def _construct_file(self) -> str:
+        """Build the BIDS filename pattern.
+        
+        Constructs a filename pattern following BIDS conventions:
+        sub-{subject}_ses-{session}_task-{task}_run-{run}_desc-{desc}_{suffix}.{ext}
+        
+        Returns:
+            str: Filename pattern with appropriate wildcards
+        """
 
         attributes = [
             ("sub-", self.subject),
@@ -210,7 +211,7 @@ class BIDSselector:
         parts = []
 
         for key, value in attributes:
-            if value is not None:
+            if value:
                 parts.append(f"{key}{value}")
                 first_none_replaced = False
             elif not first_none_replaced:
@@ -219,88 +220,117 @@ class BIDSselector:
 
         filename = "_".join(parts)
         
-        if self.suffix is not None:
-            filename = filename + f"_{self.suffix}"
-        if self.extension is not None:
+        if self.suffix:
+            filename = f"{filename}_{self.suffix}"
+        
+        if self.extension:
             if not first_none_replaced and self.suffix is None:
                 filename = filename + f"*.{self.extension}"
             else:
                 filename = filename + f".{self.extension}"
-        elif self.extension is None:
+        else:
             filename = filename + '*'
 
-        filename = filename.replace("_*_","*")
+        filename = filename.replace("_*_","*").replace("**","*")
         return filename
 
-    def _construct_glob_query(self):
-        return os.fspath(self._construct_path() / self._construct_file())
-
-    def _get_layout(self) -> pd.DataFrame:
-        """Finishing some."""
+    def _construct_glob_query(self) -> str:
+        """Combine path and filename patterns for filesystem query.
         
-        files_iterator = self.root.rglob(self._construct_glob_query())
-        self.file_system = {
-            "root": [],
-            "subject": [],
-            "session": [],
-            "datatype": [],
-            "task": [],
-            "run": [],
-            "description": [],
-            "acquisition": [],
-            "suffix": [],
-            "extension": [],
-            "filename": [],
-        }
+        Returns:
+            str: Complete glob pattern for file selection
+        """
+        self.query_instruction = os.fspath(
+            self._construct_path() / self._construct_file()
+            )
+        return self.query_instruction
+    
+    def parse_filename(self, file: Path | str) -> dict:
+        """Extract BIDS entities from filename.
+        
+        Args:
+            file: Path or string of file to parse
+            
+        Returns:
+            dict: BIDS entities extracted from filename
+                Keys: root, subject, session, datatype, task, run,
+                      acquisition, description, suffix, extension, filename
+        """
+        if isinstance(file, str):
+            file = Path(file)
+
+        path_parts = file.relative_to(self.root).parts
+
+        file_parts = {}
+        file_parts['root'] = self.root
+        file_parts['subject'] = file.name.split('_')[0].split('-')[1]
+        file_parts['session'] = file.name.split('_')[1].split('-')[1]
+        try:
+            file_parts['datatype'] = path_parts[2]
+        except Exception:
+            Warning('No datatype detected')
+
+        desired_keys = ['task','run','desc','acq']
+        splitted_filename = file.stem.split('_')
+        for desired_key in desired_keys:
+            
+            if desired_key in file.stem:
+                value = [
+                    part.split('-')[1] 
+                    for part in splitted_filename
+                    if desired_key in part
+                ][0]
+            else:
+                value = None
+
+            if desired_key == 'desc':
+                desired_key = 'description'
+            
+            elif desired_key == 'acq':
+                desired_key = 'acquisition'
+            
+            file_parts[desired_key] = value
+                
+        file_parts['suffix'] = splitted_filename[-1]
+        file_parts['extension'] = file.suffix
+        file_parts['filename'] = file
+
+        return file_parts
+
+    def _get_layout(self, query: str = '*') -> pd.DataFrame:
+        """Scan filesystem and build DataFrame of matching files.
+        
+        Args:
+            query: Glob pattern for file selection
+            
+        Returns:
+            pd.DataFrame: DataFrame containing all matching files and their BIDS entities
+        """
+        files_iterator = Path(self.root).rglob(query)
+        database_keys = ['root','subject','session','datatype','task','run', 
+                         'acquisition', 'description','suffix','extension','filename']
+
+        data_base_dict: dict[str, list] = {key: [] for key in database_keys}
 
         for file in files_iterator:
-            self.file_system['root'].append(self.root)
-            path_parts = file.relative_to(self.root).parts
-            self.file_system['subject'].append(path_parts[0].split('-')[1])
-            self.file_system['session'].append(path_parts[1].split('-')[1])
-            self.file_system['datatype'].append(path_parts[2])
-            desired_keys = ['task','run','desc','acq']
-            file_parts = file.stem.split('_')
-            
+            file_parts = self.parse_filename(file)
+            for key, value in file_parts.items():
+                data_base_dict[key].append(value)
 
-            for desired_key in desired_keys:
-                
-                if desired_key in file.stem:
-                    value = [
-                        part.split('-')[1] 
-                        for part in file_parts 
-                        if desired_key in part
-                    ][0]
-                else:
-                    value = None
+        self.database = pd.DataFrame(data_base_dict)
 
-                if desired_key == 'desc':
-                    desired_key = 'description'
-                
-                elif desired_key == 'acq':
-                    desired_key = 'acquisition'
-                
-                self.file_system[desired_key].append(value)
-                    
-            self.file_system['suffix'].append(file_parts[-1])
-            self.file_system['extension'].append(file.suffix)
-            self.file_system['filename'].append(file)
-
-        return pd.DataFrame(self.file_system)
+        return self
 
     def _standardize_input_str(self, value: str) -> str:
-        """Standardize the input string for consistency.
-
-        Sometime we can think about a list of subject being ['sub-01','sub-02']
-        while the authorized input is ['01', '02'] or '01-*'. This function
-        remove the prefix from the input string for consistency inside of the
-        class and also allow more flexibility on the user side.
-
+        """Remove BIDS prefixes from input strings.
+        
+        Standardizes inputs by removing prefixes like 'sub-', 'ses-', etc.
+        
         Args:
-            value (str): The value to convert
-
+            value: Input string to standardize
+            
         Returns:
-            str: The converted value
+            str: Standardized string without BIDS prefixes
         """
         prefix_list = [
             "sub-",
@@ -314,49 +344,167 @@ class BIDSselector:
                 return value.replace(prefix, "")
 
         return value
+    
+    def _get_range(self,
+                   dataframe_column: pd.core.series.Series,
+                   start: int | str | None = None,
+                   stop: int | str | None = None) -> pd.core.series.Series:
+        
+        if isinstance(start, str):
+            start = int(start)
 
-    def _convert_input_to_list(self, entity: str, value: str | None) -> list | None:
-        """Parse range argument.
+        if isinstance(stop, str):
+            stop = int(stop)
+
+        dataframe_column = dataframe_column.apply(lambda s: int(s))
+
+        if start is None or start == '*':
+            start = min(dataframe_column)
+            
+        if stop is None or stop == '*':
+            stop = max(dataframe_column)
+        
+        return (start <= dataframe_column) & (dataframe_column < stop)
+    
+    def _get_single_loc(self,
+                        dataframe_column: pd.core.series.Series,
+                        value: str) -> pd.core.series.Series:
+        
+        locations_found = dataframe_column == value
+        if not any(locations_found):
+            raise Exception('No location corresponding found in the database')
+        else:
+            return dataframe_column == value
+
+    def _is_numerical(self,
+                      dataframe_column: pd.core.series.Series
+                      ) -> pd.core.series.Series:
+        return all(
+            dataframe_column.apply(lambda string: string.isdigit())
+            )
+    
+    def _interpret_string(self,
+                          dataframe_column: pd.core.series.Series,
+                          string: str,
+                          ) -> pd.core.series.Series:
+        """I want to interpret the string when there is a `-`. Check if
+        The splitted results are 2 digit. If not throw an error saying that the 
+        input must be 2 digit separated by a `-` or 1 digit and a wild card `*` 
+        separated by a `-`. If everything is ok run the get range.
 
         Args:
-            entity: The entity to get from the layout.
-            value: The value to parse.
-
-        Returns:
-            A list of IDs or a string.
-
-        Raises:
-            ValueError: If the entity contains non-integers and a range is provided.
-            IndexError: If the start or end index is out of range.
+            string (str): _description_
         """
-        existing_values = self._original_layout.get(target=entity, return_type="id")
+        if '-' in string:
+            start, stop = string.split('-')
+            conditions = [
+                (start.isdigit() or start == '*'),
+                (stop.isdigit() or stop == '*')
+            ]
+                 
+            if not all(conditions):
+                raise ValueError("Input must be 2 digits separated by a `-` or "\
+                    "1 digit and a wild card `*` separated by a `-`")
 
-        if value == "*" or value is None:
-            selection = existing_values
-
-        elif "," in value:
-            if "[" in value:
-                value = value[1:-1]
-            from_input = set(value.replace(" ", "").split(","))
-            from_existing = set(existing_values)
-            selection = list(from_input.intersection(from_existing))
-
-        elif "-" in value:
-            start, end = value.split("-")
-            if start == "*":
-                selection = existing_values[: existing_values.index(end) + 1]
-            elif end == "*":
-                selection = existing_values[existing_values.index(start) :]
-            else:
-                selection = existing_values[
-                    existing_values.index(start) : existing_values.index(end)
-                ]
+            return self._get_range(
+                dataframe_column=dataframe_column,
+                start=int(start) if start.isdigit() else None,
+                stop=int(stop) if stop.isdigit() else None
+            )
 
         else:
-            selection = value
-
-        return selection
-
-    def select(self):
-        pass
+            return self._get_single_loc(dataframe_column, string)
         
+    def _perform_selection(self,
+                           dataframe_column: pd.core.series.Series,
+                           value: str) -> pd.core.series.Series:
+
+        if self._is_numerical(dataframe_column):
+            return self._interpret_string(dataframe_column,value)
+        else:
+            return self._get_single_loc(dataframe_column, value)
+        
+    def select(self, **kwargs) -> pd.DataFrame:
+        """Select files from database based on BIDS entities.
+        
+        If the argument is not None check if it is a list or a string. If it is
+        a string then check if there is any `-` and `*`. If it is the case then
+        call the string interpreter to generate a truth table of a selection of
+        a range. If not then only get the truth table directly with an == passed
+        on the dataframe. Check if the string value exist in the unique values
+        of the dataframe. If not throw an error.
+        If it is a list then iterate over the list and for each value of the list
+        perfor the check above. The truth table should be a list that is appending
+        as a function of the iteration over argument to generate a final table
+        that would be the selection. 
+        
+        Remember to throw a warning if all the table is False (if not any()).
+
+        Args:
+            subject: Subject identifier
+            session: Session identifier
+            datatype: Data type identifier
+            task: Task identifier
+            run: Run identifier
+            acquisition: Acquisition identifier
+            description: Description identifier
+            suffix: Suffix identifier
+            extension: File extension
+            Returns:
+            pd.DataFrame: DataFrame containing selected files and their BIDS entities
+        """
+
+        possible_arguments = [
+            "subject",
+            "session",
+            "datatype",
+            "task",
+            "run",
+            "acquisition",
+            "description",
+            "suffix",
+            "extension",
+        ]
+
+        for argument_name in kwargs.keys():
+            if argument_name not in possible_arguments:
+                raise Exception("Argument must be one of the following"\
+                    f"{', '.join(possible_arguments)}")
+        
+        condition_for_select = list()
+        for name, value in kwargs.items(): 
+
+            if value is not None:
+                conditions = [
+                    isinstance(value,str),
+                    isinstance(value,list)
+                ]
+
+                if any(conditions):
+                    col = self.database[name]
+
+                    if isinstance(value, str):
+                        value = [value]
+
+                    temp_selection = list()
+                    for individual_value in value:
+                        individual_value = self._standardize_input_str(individual_value)
+                        temp_selection.append(
+                            self._perform_selection(col, individual_value)
+                        ) 
+
+                    if len(temp_selection) > 1:
+                        temp_selection = reduce(lambda x, y: x | y, temp_selection)
+                    
+                    else:
+                        temp_selection = temp_selection[0]
+
+                    condition_for_select.append(temp_selection)
+                    
+                
+                else:
+                    raise TypeError('Argument must be either string or list')
+        
+        selection = reduce(lambda x, y: x & y, condition_for_select)
+        return self.database.loc[selection]
+                    
