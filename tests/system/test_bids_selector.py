@@ -1,115 +1,288 @@
 import pytest
-import pandas as pd
 from pathlib import Path
-from eeg_research.system.bids_selector import BidsArchitecture
+import pandas as pd
+import numpy as np
+from eeg_research.system.bids_selector import BasePath, BidsPath, BidsQuery, BidsArchitecture
 
 @pytest.fixture
-def sample_bids_root(tmp_path):
-    """Create a sample BIDS directory structure for testing."""
-    root = tmp_path / "bids_dataset"
-    # Create sample BIDS structure
-    for sub in ["01", "02", "03", "04"]:
-        for ses in ["01", "02", "03"]:
-            for modality in ["eeg","mri"]:
-                path = root / f"sub-{sub}" / f"ses-{ses}" / modality
-                path.mkdir(parents=True)
-                # Create sample files
-                (path / f"sub-{sub}_ses-{ses}_task-rest_run-01_desc-clean_{modality}.vhdr").touch()
-                (path / f"sub-{sub}_ses-{ses}_task-anothertask_run-01_{modality}.vhdr").touch()
-    return root
+def bids_dataset(tmp_path: Path):
+    """Create a temporary BIDS dataset structure."""
+    # Create base directories
+    data_dir = tmp_path / "data"
+    subjects = ["001", "002", "003"]
+    ses = "01"
+    run = "01"
+    acq = "anAcq"
+    desc = "aDescription"
+    
+    # Generate all combinations of files
+    for sub in subjects:
+        base_path = data_dir / f"sub-{sub}" / f"ses-{ses}" / "eeg"
+        base_path.mkdir(parents=True, exist_ok=True)
+        
+        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_eeg.vhdr").touch()
+        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_run-{run}_eeg.vhdr").touch()
+        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_acq-{acq}_run-01_eeg.vhdr").touch()
+        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_acq-{acq}_run-01_desc-{desc}_eeg.vhdr").touch()
+        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_run-01_acq-anAcq_desc-aDescription_eeg.vhdr").touch()
 
-@pytest.fixture
-def bids_selector(sample_bids_root):
-    """Create BidsArchitecture instance with sample data."""
-    return BidsArchitecture(root=sample_bids_root)
+    return data_dir
 
-def test_construct_path(bids_selector):
-    bids_selector.subject = "01"
-    bids_selector.session = "01"
-    bids_selector.datatype = "eeg"
-    path = bids_selector._construct_path()
-    assert str(path) == "sub-01/ses-01/eeg"
+# BasePath Tests
+def test_base_path_str():
+    base = BasePath(root=Path("/data"), subject="001", session="01")
+    assert "root: /data" in str(base)
+    assert "subject: 001" in str(base)
 
-def test_construct_file(bids_selector):
-    bids_selector.subject = "01"
-    bids_selector.task = "rest"
-    bids_selector.extension = "vhdr"
-    filename = bids_selector._construct_file()
-    assert "sub-01" in filename
-    assert "task-rest" in filename
-    assert filename.endswith(".vhdr")
+def test_base_path_make_path():
+    base = BasePath(root=Path("/data"), subject="001", session="01", datatype="eeg")
+    assert str(base._make_path(absolute=True)) == "/data/sub-001/ses-01/eeg"
+    assert str(base._make_path(absolute=False)) == "sub-001/ses-01/eeg"
 
-def test_parse_filename(bids_selector, sample_bids_root):
-    file = sample_bids_root / "sub-01/ses-01/eeg/sub-01_ses-01_task-rest_run-01_desc-clean_eeg.vhdr"
-    result = bids_selector.parse_filename(file)
-    assert result["subject"] == "01"
-    assert result["session"] == "01"
-    assert result["task"] == "rest"
-    assert result["run"] == "01"
-    assert result["description"] == "clean"
+def test_base_path_make_basename():
+    base = BasePath(
+        subject="001", 
+        session="01", 
+        task="rest",
+        suffix="eeg",
+        run="01",
+        acquisition="test",
+        description="clean"
+    )
+    expected = "sub-001_ses-01_task-rest_acq-test_run-01_desc-clean_eeg"
+    assert base._make_basename() == expected
 
-def test_standardize_input_str(bids_selector):
-    assert bids_selector._standardize_input_str("sub-01") == "01"
-    assert bids_selector._standardize_input_str("ses-02") == "02"
-    assert bids_selector._standardize_input_str("task-rest") == "rest"
-    assert bids_selector._standardize_input_str("run-01") == "01"
-    assert bids_selector._standardize_input_str("test") == "test"
+def test_base_path_parse_filename():
+    file = Path("/data/sub-001/ses-01/eeg/sub-001_ses-01_task-rest_run-01_desc-clean_eeg.vhdr")
+    parts = BasePath.parse_filename(None, file)
+    assert parts["subject"] == "001"
+    assert parts["session"] == "01"
+    assert parts["task"] == "rest"
+    assert parts["run"] == "01"
+    assert parts["description"] == "clean"
 
-def test_get_range(bids_selector):
-    series = pd.Series(["01", "02", "03", "04"])
-    result = bids_selector._get_range(series, "02", "04")
-    assert all(result == [False, True, True, False])
+# BidsPath Tests
+def test_bids_path_from_filename():
+    file = Path("sub-001_ses-01_task-rest_eeg.vhdr")
+    bids = BidsPath.from_filename(file)
+    assert bids.subject == "001"
+    assert bids.session == "01"
+    assert bids.task == "rest"
+    assert bids.suffix == "eeg"
+    assert bids.extension == ".vhdr"
+    assert bids.relative_path == Path("sub-001/ses-01/eeg")
 
-def test_get_single_loc(bids_selector):
-    series = pd.Series(["01", "02", "03"])
-    result = bids_selector._get_single_loc(series, "02")
-    assert all(result == [False, True, False])
-    with pytest.raises(Exception):
-        bids_selector._get_single_loc(series, "04")
-
-def test_is_numerical(bids_selector):
-    series = pd.Series(["01", "02", "03"])
-    assert bids_selector._is_numerical(series) == True
-    series = pd.Series(["01", "abc", "03"])
-    assert bids_selector._is_numerical(series) == False
-
-def test_interpret_string(bids_selector):
-    series = pd.Series(["01", "02", "03", "04"])
-    result = bids_selector._interpret_string(series, "02-04")
-    assert all(result == [False, True, True, False])
-    with pytest.raises(ValueError):
-        bids_selector._interpret_string(series, "a-b")
-
-def test_select_unique_vals(bids_selector):
-    result = bids_selector.select(
-        subject="01",
+def test_bids_path_properties():
+    bids = BidsPath(
+        root=Path("/data"),
+        subject="001",
         session="01",
+        datatype="eeg",
         task="rest",
-        datatype = "eeg",
-        suffix = "eeg",
+        suffix="eeg",
+        extension=".vhdr"
     )
-    assert len(result) == 1
-    assert "sub-01" in str(result.iloc[0]["filename"])
-    assert "task-rest" in str(result.iloc[0]["filename"])
+    assert bids.basename == "sub-001_ses-01_task-rest_eeg"
+    assert bids.filename == "sub-001_ses-01_task-rest_eeg.vhdr"
+    assert str(bids.absolute_path) == "/data/sub-001/ses-01/eeg"
+    assert str(bids.relative_path) == "sub-001/ses-01/eeg"
 
-def test_select_list_vals(bids_selector):
-    result = bids_selector.select(
-        subject=["01","02"],
-        session=["01","02"],
-        task="rest",
-        datatype = "eeg",
-        suffix = "eeg",
-    )
-    assert len(result) == 4
-    assert "sub-01" in str(result.iloc[0]["filename"])
-    assert "ses-01" in str(result.iloc[0]["filename"])
-    assert "task-rest" in str(result.iloc[0]["filename"])
-    assert "sub-01" in str(result.iloc[1]["filename"])
-    assert "ses-02" in str(result.iloc[1]["filename"])
-    assert "task-rest" in str(result.iloc[1]["filename"])
-    assert "sub-02" in str(result.iloc[2]["filename"])
-    assert "ses-01" in str(result.iloc[2]["filename"])
-    assert "task-rest" in str(result.iloc[2]["filename"])
-    assert "sub-02" in str(result.iloc[3]["filename"])
-    assert "ses-02" in str(result.iloc[3]["filename"])
-    assert "task-rest" in str(result.iloc[3]["filename"])
+# BidsQuery Tests
+def test_bids_query():
+    query = BidsQuery(root=Path("/data"))
+    assert query.subject == "*"
+    assert query.session == "*"
+    assert query.datatype == "*"
+    assert query.task == "*"
+
+    path_cond = "sub-*/ses-*/*"
+    assert str(query.relative_path) == path_cond
+
+cases = [
+    {
+        "task" : "aTask"
+        },
+    {
+        "run": "01"
+        },
+    {
+        "task": "aTask",
+        "run": "01",
+        },
+    {
+        "acquisition": "anAcq",
+        },
+    {
+        "task": "aTask",
+        "acquisition": "anAcq",
+        },
+    {
+        "task": "aTask",
+        "run" : "01",
+        "acquisition": "anAcq",
+        },
+    {
+        "description": "aDescription",
+        },
+    {
+        "task": "aTask",
+        "description": "aDescription",
+        },
+    {
+        "task": "aTask",
+        "run" : "01",
+        "description": "aDescription",
+        },
+    {
+        "task": "aTask",
+        "run" : "01",
+        "acquisition": "anAcq",
+        "description": "aDescription",
+        },
+    {
+        "suffix": "eeg",
+        },
+    {
+        "task": "aTask",
+        "suffix": "eeg",
+        },
+    {
+        "task": "aTask",
+        "acquisition": "anAcq",
+        "suffix": "eeg",
+        },
+    {
+        "task": "aTask",
+        "run": "01",
+        "suffix": "eeg",
+        },
+    {
+        "task": "aTask",
+        "description": "aDescription",
+        "suffix": "eeg",
+        },
+    {
+        "extension":"vhdr",
+        },
+    {
+        "suffix": "eeg",
+        "extension" :"vhdr",
+        },
+    {
+        "task": "aTask",
+        "run": "01",
+        "extension": "vhdr",
+        },
+    {
+        "task": "aTask",
+        "description": "aDescription",
+        "extension": "vhdr",
+        },
+]
+
+expected = [
+    "sub-*_ses-*_task-aTask*",
+    "sub-*_ses-*_task-*_run-01*",
+    "sub-*_ses-*_task-aTask*_run-01*",
+    "sub-*_ses-*_task-*_acq-anAcq*",
+    "sub-*_ses-*_task-aTask*_acq-anAcq*",
+    "sub-*_ses-*_task-aTask*_acq-anAcq*_run-01*",
+    "sub-*_ses-*_task-*_desc-aDescription*",
+    "sub-*_ses-*_task-aTask*_desc-aDescription*",
+    "sub-*_ses-*_task-aTask*_run-01*_desc-aDescription*",
+    "sub-*_ses-*_task-aTask*_acq-anAcq*_run-01*_desc-aDescription*",
+    "sub-*_ses-*_task-*_eeg.*",
+    "sub-*_ses-*_task-aTask*_eeg.*",
+    "sub-*_ses-*_task-aTask*_acq-anAcq*_eeg.*",
+    "sub-*_ses-*_task-aTask*_run-01*_eeg.*",
+    "sub-*_ses-*_task-aTask*_desc-aDescription*_eeg.*",
+    "sub-*_ses-*_task-*.vhdr",
+    "sub-*_ses-*_task-*_eeg.vhdr",
+    "sub-*_ses-*_task-aTask*_run-01*.vhdr",
+    "sub-*_ses-*_task-aTask*_desc-aDescription*.vhdr",
+    
+]
+
+@pytest.mark.parametrize("case, expected", zip(cases, expected))
+def test_bids_query_filename(case, expected):
+    # Add the root path to the case dictionary
+    
+    # Create an instance of BidsQuery
+    query = BidsQuery(root = Path("/data"),**case)
+    
+    # Assert the filename matches the expected value
+    assert query.filename == expected, f"Failed for case: {case}"
+
+def test_bids_query_generate():
+    query = BidsQuery(root=Path("/data"), subject="001")
+    assert hasattr(query, "generate")
+
+@pytest.mark.parametrize("case, expected", zip(cases, expected))
+def test_bids_architecture_database_call(bids_dataset, case, expected):
+    architecture = BidsArchitecture(root=bids_dataset, **case)
+    layout = architecture.get_layout()
+    
+    # Basic validation
+    assert not(layout.database.empty)
+    
+    # Validate structure
+    assert all(col in layout.database.columns for col in [
+        'subject', 'session', 'datatype', 'task', 'run', 
+        'acquisition', 'description', 'suffix', 'extension'
+    ])
+    
+    # Validate specific queries based on case
+    if 'task' in case:
+        assert all(layout.database['task'] == case['task'])
+    
+    if 'run' in case:
+        assert all(layout.database['run'] == case['run'])
+        
+    if 'acquisition' in case:
+        assert all(layout.database['acquisition'] == case['acquisition'])
+        
+    if 'description' in case:
+        assert all(layout.database['description'] == case['description'])
+        
+    if 'suffix' in case:
+        assert all(layout.database['suffix'] == case['suffix'])
+        
+    if 'extension' in case:
+        assert all(layout.database['extension'] == f".{case['extension']}")
+    
+    # Validate file existence
+    assert all(Path(f).exists() for f in layout.database['filename'])
+    
+    # Validate BIDS naming convention
+    assert all(layout.database['filename'].apply(
+        lambda x: str(Path(x).name).startswith('sub-')
+    ))
+    
+# BidsArchitecture Tests
+def test_bids_architecture_selection_methods():
+    arch = BidsArchitecture(root=Path("/data"))
+    
+    # Test numerical checks
+    test_series = pd.Series(["1", "2", "3"])
+    assert arch._is_numerical(test_series) == True
+    
+    # Test range selection
+    test_series = pd.Series(["1", "2", "3", "4", "5"])
+    result = arch._get_range(test_series, "2", "4")
+    assert all(result == [False, True, True, False, False])
+    
+    # Test string interpretation
+    result = arch._interpret_string(test_series, "2-4")
+    assert all(result == [False, True, True, False, False])
+
+def test_bids_architecture_select():
+    arch = BidsArchitecture(root=Path("/data"))
+    arch.database = pd.DataFrame({
+        "subject": ["001", "002", "003"],
+        "session": ["01", "01", "02"],
+        "task": ["rest", "rest", "task"]
+    })
+    
+    result = arch.select(subject="001", session="01")
+    assert len(result) == 1
+    assert result.iloc[0]["subject"] == "001"
