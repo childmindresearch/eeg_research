@@ -220,41 +220,39 @@ def test_bids_query_generate():
 @pytest.mark.parametrize("case, expected", zip(cases, expected))
 def test_bids_architecture_database_call(bids_dataset, case, expected):
     architecture = BidsArchitecture(root=bids_dataset, **case)
-    layout = architecture.get_layout()
-    
     # Basic validation
-    assert not(layout.database.empty)
+    assert not(architecture.database.empty)
     
     # Validate structure
-    assert all(col in layout.database.columns for col in [
+    assert all(col in architecture.database.columns for col in [
         'subject', 'session', 'datatype', 'task', 'run', 
         'acquisition', 'description', 'suffix', 'extension'
     ])
     
     # Validate specific queries based on case
     if 'task' in case:
-        assert all(layout.database['task'] == case['task'])
+        assert all(architecture.database['task'] == case['task'])
     
     if 'run' in case:
-        assert all(layout.database['run'] == case['run'])
+        assert all(architecture.database['run'] == case['run'])
         
     if 'acquisition' in case:
-        assert all(layout.database['acquisition'] == case['acquisition'])
+        assert all(architecture.database['acquisition'] == case['acquisition'])
         
     if 'description' in case:
-        assert all(layout.database['description'] == case['description'])
+        assert all(architecture.database['description'] == case['description'])
         
     if 'suffix' in case:
-        assert all(layout.database['suffix'] == case['suffix'])
+        assert all(architecture.database['suffix'] == case['suffix'])
         
     if 'extension' in case:
-        assert all(layout.database['extension'] == f".{case['extension']}")
+        assert all(architecture.database['extension'] == f".{case['extension']}")
     
     # Validate file existence
-    assert all(Path(f).exists() for f in layout.database['filename'])
+    assert all(Path(f).exists() for f in architecture.database['filename'])
     
     # Validate BIDS naming convention
-    assert all(layout.database['filename'].apply(
+    assert all(architecture.database['filename'].apply(
         lambda x: str(Path(x).name).startswith('sub-')
     ))
     

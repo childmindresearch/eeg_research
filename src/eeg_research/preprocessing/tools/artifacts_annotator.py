@@ -270,16 +270,6 @@ ARTIFACT ANNOTATIONS STATISTICS
             np.round(self.statistics['tot_good']['ratio']*100,2)
             }%)""")
 
-        for artifact_type in self.statistics['tot_bad']['artifact_types']:
-            this_artifact = self.statistics[artifact_type]
-            
-            this_artifact_duration = np.round(this_artifact['seconds'],2)
-            this_artifact_perc = np.round(this_artifact['ratio']*100,2)
-            
-            messages_list.extend(f"""
-                |__{artifact_type} duration (sec): {this_artifact_duration}s ({
-                this_artifact_perc}%)""")
-        
         self.statistics_message = ''.join(messages_list)
         print(self.statistics_message)
         return self

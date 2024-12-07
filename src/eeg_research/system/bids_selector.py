@@ -19,13 +19,9 @@ from dataclasses import dataclass
 from functools import reduce
 from pathlib import Path
 from warnings import warn
+from functools import cached_property
 
 import pandas as pd
-
-
-def is_numerical(dataframe: pd.DataFrame, column_name: str):
-    return all(dataframe[column_name].apply(lambda string: string.isdigit()))
-
 
 @dataclass
 class BasePath:
@@ -91,14 +87,11 @@ class BasePath:
         desired_keys = ["task", "run", "desc", "acq"]
         splitted_filename = file.stem.split("_")
 
-        if len(file.parts) > 2:
-            file_parts["root"] = file.parents[3]
-            file_parts["datatype"] = file.parents[2]
-        elif len(file.parts) > 1:
-            file_parts["datatype"] = file.parents[1]
+        if len(file.parts) > 1:
+            file_parts["datatype"] = file.parts[-2]
         else:
             file_parts["datatype"] = splitted_filename[-1]
-
+            
         file_parts["subject"] = file.name.split("_")[0].split("-")[1]
         file_parts["session"] = file.name.split("_")[1].split("-")[1]
 
@@ -172,7 +165,10 @@ class BidsPath(BasePath):
 
     @property
     def fullpath(self):
-        return self.pathname / self.filename
+        if getattr(self,'root', False):
+            return self.absolute_path / self.filename
+        else:
+            return self.relative_path / self.filename
 
 @dataclass
 class BidsQuery(BidsPath):
@@ -307,7 +303,8 @@ class BidsArchitecture(BidsQuery):
     def __iter__(self):
         return self.database["filename"].values
 
-    def get_layout(self) -> pd.DataFrame:
+    @cached_property
+    def database(self) -> pd.DataFrame:
         """Scan filesystem and build DataFrame of matching files.
 
         Args:
@@ -335,13 +332,14 @@ class BidsArchitecture(BidsQuery):
         for file in self.generate():
             bids_path = BidsPath.from_filename(file)
             for key, value in bids_path.__dict__.items():
-                data_base_dict[key].append(value)
-            
+                if key == "root":
+                    data_base_dict['root'].append(self.root)
+                else:
+                    data_base_dict[key].append(value)
+
             data_base_dict['filename'].append(file)
 
-        self.database = pd.DataFrame(data_base_dict)
-
-        return self
+        return pd.DataFrame(data_base_dict)
     
     def print_summary(self) -> str:
         """Public string representation when calling print().
@@ -442,7 +440,7 @@ class BidsArchitecture(BidsQuery):
     def _is_numerical(
         self, dataframe_column: pd.core.series.Series
     ) -> pd.core.series.Series:
-        return all(dataframe_column.apply(lambda string: string.isdigit()))
+        return all(dataframe_column.apply(lambda x: str(x).isdigit()))
 
     def _interpret_string(
         self,
@@ -567,7 +565,23 @@ class BidsArchitecture(BidsQuery):
 
         selection = reduce(lambda x, y: x & y, condition_for_select)
         return self.database.loc[selection]
+    
+    def report(self):
+        return BidsReporter(self.database)
 
 
+#TODO I want to add a method to the BidsArchitecture to generate a "report". It
+# will return a BidsReporter object. I also have to finish to write the dunder
+# methods of BidsReporter.
+
+@dataclass
+class BidsReporter:
+    database: pd.DataFrame
+
+    def __post_init__(self):
+        for column in self.database.columns:
+            setattr(self,column+"s",tuple(self.database[column].unique()))
+    
+    
 class BidsSelector:
     pass
