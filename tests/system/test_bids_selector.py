@@ -282,5 +282,5 @@ def test_bids_architecture_select():
     })
     
     result = arch.select(subject="001", session="01")
-    assert len(result) == 1
-    assert result.iloc[0]["subject"] == "001"
+    assert len(result.database) == 1
+    assert result.database.iloc[0]["subject"] == "001"

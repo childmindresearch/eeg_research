@@ -7,61 +7,116 @@ in derivatives we have this kind of non-standardized datatype such as
 as individual modality. The workaround is to either do a monkey patching to the
 packages by forcing it to allow such datatype or write from scratch a separate
 class that would be less strict.
-The monkey patching is not very pythonic and is not recommended in the dev community
-Because of the side effect that can induce. Therefore I am on the road to
-write another 'bids-like' data handler (also simplier) from scratch.
-This will be useful for everybody dealing with pseudo BIDS layout with the
-possibility to customize the queries.
+The monkey patching is not very pythonic and it is usually a bad practice
+because of the side effect that can induce. Therefore here is a 'bids-like' data 
+handler (also simplier) which will be useful for everybody dealing with pseudo 
+BIDS layout with the possibility to customize the queries.
+
+The main class to use is `BidsArchitecture` which give the architecture
+(the layout, the structure) of the desired dataset for a specific query.
 """
 
+import copy
 import os
 from dataclasses import dataclass
-from functools import reduce
+from functools import cached_property, reduce
 from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, Union
 from warnings import warn
-from functools import cached_property
 
 import pandas as pd
 
+
 @dataclass
 class BasePath:
-    root: Path | None = None
-    subject: str | None = None
-    session: str | None = None
-    datatype: str | None = None
-    task: str | None = None
-    acquisition: str | None = None
-    run: str | None = None
-    description: str | None = None
-    suffix: str | None = None
-    extension: str | None = None
+    """Base class for handling BIDS-formatted file paths and names.
+
+    This class provides core functionality for working with BIDS-style paths and filenames,
+    including path construction, filename parsing, and attribute management.
+
+    Attributes:
+        root (Path | None): Root directory path of the BIDS dataset
+        subject (str | None): Subject identifier (without 'sub-' prefix)
+        session (str | None): Session identifier (without 'ses-' prefix)
+        datatype (str | None): Type of data (e.g., 'eeg', 'eyetracking', 'brainstate')
+        task (str | None): Task identifier (without 'task-' prefix)
+        acquisition (str | None): Acquisition identifier (without 'acq-' prefix)
+        run (str | None): Run number (without 'run-' prefix)
+        description (str | None): Description identifier (without 'desc-' prefix)
+        suffix (str | None): File suffix/type identifier
+        extension (str | None): File extension (e.g., '.fif', '.edf')
+
+    Methods:
+        _make_path: Constructs the BIDS directory path
+        _make_basename: Creates the BIDS-compliant filename without extension
+        parse_filename: Extracts BIDS entities from a given filename
+
+    Note:
+        This is a base class that implements core BIDS path handling functionality.
+        It's meant to be inherited by more specific BIDS handling classes.
+    """    
+    root: Optional[Path] = None
+    subject: Optional[str] = None
+    session: Optional[str] = None
+    datatype: Optional[str] = None
+    task: Optional[str] = None
+    acquisition: Optional[str] = None
+    run: Optional[str] = None
+    description: Optional[str] = None
+    suffix: Optional[str] = None
+    extension: Optional[str] = None
 
     def __post_init__(self):
+        """Initialize extension format after dataclass initialization.
+        
+        Ensures extension starts with a period (.) if provided.
+        """
         if self.extension and "." not in self.extension:
             self.extension = "." + self.extension
+
     def __str__(self):
+        """Return string representation of the BIDS path.
+        
+        Returns:
+            str: Multi-line string showing all non-private attributes and their values.
+        """
         string_list = []
         for attribute, value in self.__dict__.items():
             if not "_" in attribute:
                 string_list.append(f"{attribute}: {value}")
-
         return "\n".join(string_list)
 
-    def _make_path(self, absolute=True):
+    def _make_path(self, absolute: bool=True) -> Path:
+        """Construct BIDS-compliant directory path.
+
+        Args:
+            absolute (bool): If True and root is set, returns absolute path.
+                            If False, returns relative path.
+
+        Returns:
+            Path: BIDS directory path (absolute or relative)
+        """
         relative_path = Path(
             os.path.join(
                 f"sub-{self.subject}",
-                f"ses-{self.session}",
-                self.datatype,
+                f"ses-{self.session}", 
+                self.datatype if self.datatype is not None else "",
             )
         )
-
-        if absolute and getattr(self,"root", False):
+        if absolute and getattr(self,"root", False) and self.root is not None:
             return self.root / relative_path
         else:
             return relative_path
 
     def _make_basename(self):
+        """Create BIDS-compliant filename without extension.
+        
+        Assembles filename components in correct order following BIDS specification.
+        Optional components (description, run, acquisition) are inserted if present.
+
+        Returns:
+            str: BIDS-compliant filename without extension
+        """
         fname_elem = [
             f"sub-{self.subject}",
             f"ses-{self.session}",
@@ -76,14 +131,24 @@ class BasePath:
             fname_elem.insert(3, f"acq-{self.acquisition}")
         
         fname_elem = [elem for elem in fname_elem if elem is not None]
-
         return "_".join(fname_elem)
 
-    def parse_filename(self, file: Path):
+    def parse_filename(self, file: Union[str, Path]) -> Dict[str, Optional[str]]:
+        """Parse BIDS entities from filename.
+
+        Extracts BIDS entities (subject, session, task, etc.) from a BIDS-compliant 
+        filename.
+
+        Args:
+            file (Path): Path object or string containing BIDS filename to parse
+
+        Returns:
+            dict: Dictionary containing extracted BIDS entities
+        """
         if isinstance(file, str):
             file = Path(file)
 
-        file_parts = {}
+        file_parts: Dict[str, Optional[str]] = {}
         desired_keys = ["task", "run", "desc", "acq"]
         splitted_filename = file.stem.split("_")
 
@@ -107,7 +172,6 @@ class BasePath:
 
             if desired_key == "desc":
                 desired_key = "description"
-
             elif desired_key == "acq":
                 desired_key = "acquisition"
 
@@ -121,6 +185,14 @@ class BasePath:
 
 @dataclass
 class BidsPath(BasePath):
+    """Class for handling BIDS paths with additional functionality.
+    
+    Extends BasePath with properties for path manipulation and file handling.
+    Provides methods to generate filenames and paths following BIDS conventions.
+
+    Attributes:
+        Inherits all attributes from BasePath
+    """
     subject: str | None = None
     session: str | None = None
     datatype: str | None = None
@@ -133,23 +205,48 @@ class BidsPath(BasePath):
     description: str | None = None
 
     @classmethod
-    def from_filename(cls, file: str | os.PathLike):
-        file_parts = super(BidsPath, cls).parse_filename(cls,file)
+    def from_filename(cls, file: str | os.PathLike) -> 'BidsPath':
+        """Create BidsPath instance from existing BIDS filename.
+
+        Args:
+            file: Path or string of BIDS-compliant filename
+
+        Returns:
+            BidsPath: New instance populated with entities from filename
+        """
+
+        file_parts = cls.parse_filename(cls(), Path(file))
         return cls(**file_parts)
 
-    def __post_init__(self):
-        return super().__post_init__()
+    def __post_init__(self) -> None:
+        """Initialize the object after __init__ has been called."""
+        super().__post_init__()
 
     @property
-    def basename(self):
+    def basename(self) -> str:
+        """Get BIDS-compliant filename without extension.
+
+        Returns:
+            str: Base filename following BIDS naming convention
+        """
         return super()._make_basename()
 
     @property
-    def filename(self):
-        return self.basename + self.extension
+    def filename(self) -> str:
+        """Get complete filename with extension.
+
+        Returns:
+            str: Full filename with extension
+        """
+        return self.basename + (self.extension or "")
 
     @property
-    def absolute_path(self):
+    def absolute_path(self) -> Path:
+        """Get absolute path to file.
+
+        Returns:
+            Path: Absolute path if root is set, else relative path with warning
+        """
         if self.root:
             return super()._make_path(absolute=True)
         else:
@@ -160,11 +257,21 @@ class BidsPath(BasePath):
             return super()._make_path(absolute=False)
 
     @property
-    def relative_path(self):
+    def relative_path(self) -> Path:
+        """Get path relative to root directory.
+
+        Returns:
+            Path: Relative path following BIDS folder structure
+        """
         return super()._make_path(absolute=False)
 
     @property
-    def fullpath(self):
+    def fullpath(self) -> Path:
+        """Get complete path including filename.
+
+        Returns:
+            Path: Full path with filename and extension
+        """
         if getattr(self,'root', False):
             return self.absolute_path / self.filename
         else:
@@ -172,19 +279,33 @@ class BidsPath(BasePath):
 
 @dataclass
 class BidsQuery(BidsPath):
-    root: Path
-    subject: str | None = None
-    session: str | None = None
-    datatype: str | None = None
-    task: str | None = None
-    run: str | None = None
-    acquisition: str | None = None
-    description: str | None = None
-    suffix: str | None = None
-    extension: str | None = None
+    """Class for querying BIDS datasets using wildcards and patterns.
+    
+    Extends BidsPath to support flexible querying of BIDS datasets using
+    wildcards and patterns. Handles conversion of query parameters to
+    filesystem-compatible glob patterns.
+
+    Attributes:
+        Inherits all attributes from BidsPath
+        All attributes support wildcards (*) for flexible matching
+    """
+    root: Optional[Path] = None
+    subject: Optional[str] = None
+    session: Optional[str] = None
+    datatype: Optional[str] = None
+    task: Optional[str] = None
+    acquisition: Optional[str] = None
+    run: Optional[str] = None
+    description: Optional[str] = None
+    suffix: Optional[str] = None
+    extension: Optional[str] = None
 
     def __post_init__(self) -> None:
+        """Initialize query parameters with wildcards.
         
+        Converts None values to wildcards and adds wildcards to existing values
+        where appropriate.
+        """
         required_attrs = [
             "subject",
             "session",
@@ -193,8 +314,6 @@ class BidsQuery(BidsPath):
             "suffix",
             "extension",
         ]
-
-        
 
         for attr in required_attrs:
             if getattr(self, attr) is None:
@@ -211,10 +330,14 @@ class BidsQuery(BidsPath):
                 setattr(self,attr, getattr(self, attr) + "*")
         
         return super().__post_init__()
-        
 
     @property
-    def filename(self):
+    def filename(self) -> str:
+        """Get filename pattern for querying.
+
+        Returns:
+            str: Filename pattern with wildcards for matching
+        """
         potential_cases = [
             "*_*",
             "**",
@@ -225,7 +348,15 @@ class BidsQuery(BidsPath):
             filename = filename.replace(case,"*")
         return filename
 
-    def generate(self):
+    def generate(self) -> Iterator[Path]:
+        """Generate iterator of matching files.
+
+        Returns:
+            Iterator[Path]: Iterator yielding paths matching query
+
+        Raises:
+            Exception: If root path is not defined
+        """
         if self.root:
             return self.root.rglob(os.fspath(self.relative_path / self.filename))
         else:
@@ -237,6 +368,16 @@ class BidsQuery(BidsPath):
 
 @dataclass
 class BidsArchitecture(BidsQuery):
+    """Main class for working with BIDS dataset structure.
+    
+    Provides comprehensive functionality for querying, selecting, and reporting
+    on BIDS datasets. Supports complex queries and selections based on BIDS
+    entities.
+
+    Attributes:
+        Inherits all attributes from BidsQuery
+        database (pd.DataFrame): Cached database of matching files
+    """
     
     root: Path
     subject: str | None = None
@@ -261,47 +402,10 @@ class BidsArchitecture(BidsQuery):
 
 
     def __add__(self, other):  # noqa: ANN204, D105, ANN001
-        if isinstance(other, self.__class__):
-            if other.root == self.root:
-                class_dict = other.to_dict()
-            else:
-                raise NotImplementedError(
-                    f"The two {self.__class__.__name__}"
-                    " instances are not pointing to the same"
-                    " directory. Set the root argument to point to the same"
-                    " directory for both instances"
-                )
-
-        elif isinstance(other, dict):
-            class_dict = other
-        else:
-            return NotImplemented
-
-        for dict_key, dict_value in class_dict.items():
-            val = getattr(self, dict_key)
-
-            if val is None:
-                setattr(self, dict_key, dict_value)
-                continue
-            if dict_value is None:
-                continue
-
-            instance_cond_self = isinstance(val, str) or isinstance(val, list)
-            instance_cond_other = isinstance(val, str) or isinstance(val, list)
-
-            if not instance_cond_self and instance_cond_other:
-                raise TypeError("Only string type or list type are allowed")
-
-            if isinstance(val, str):
-                val = [val]
-
-            if isinstance(dict_value, str):
-                dict_value = [dict_value]
-
-            setattr(self, dict_key, list(set(val).union(set(dict_value))))
-
-    def __iter__(self):
-        return self.database["filename"].values
+        #TODO I want to design an add dunder method that can add another 
+        # architecture object to the existing one with the possibility of having
+        # different roots.
+        pass
 
     @cached_property
     def database(self) -> pd.DataFrame:
@@ -408,9 +512,9 @@ class BidsArchitecture(BidsQuery):
     def _get_range(
         self,
         dataframe_column: pd.core.series.Series,
-        start: int | str | None = None,
-        stop: int | str | None = None,
-    ) -> pd.core.series.Series:
+        start: Optional[Union[int, str]] = None,
+        stop: Optional[Union[int, str]] = None
+    ) -> pd.Series:
         if isinstance(start, str):
             start = int(start)
 
@@ -438,8 +542,8 @@ class BidsArchitecture(BidsQuery):
         return locations_found
 
     def _is_numerical(
-        self, dataframe_column: pd.core.series.Series
-    ) -> pd.core.series.Series:
+        self, dataframe_column: pd.Series
+    ) -> pd.Series:
         return all(dataframe_column.apply(lambda x: str(x).isdigit()))
 
     def _interpret_string(
@@ -478,43 +582,42 @@ class BidsArchitecture(BidsQuery):
             return self._get_single_loc(dataframe_column, string)
 
     def _perform_selection(
-        self, dataframe_column: pd.core.series.Series, value: str
-    ) -> pd.core.series.Series:
+        self, 
+        dataframe_column: pd.Series, 
+        value: str
+    ) -> pd.Series:
         if self._is_numerical(dataframe_column):
             return self._interpret_string(dataframe_column, value)
         else:
             return self._get_single_loc(dataframe_column, value)
 
-    def select(self, **kwargs) -> pd.DataFrame:
+    def select(
+        self, 
+        **kwargs: Dict[str, Union[str, List[str]]]
+        ) -> pd.DataFrame:
         """Select files from database based on BIDS entities.
 
-        If the argument is not None check if it is a list or a string. If it is
-        a string then check if there is any `-` and `*`. If it is the case then
-        call the string interpreter to generate a truth table of a selection of
-        a range. If not then only get the truth table directly with an == passed
-        on the dataframe. Check if the string value exist in the unique values
-        of the dataframe. If not throw an error.
-        If it is a list then iterate over the list and for each value of the list
-        perfor the check above. The truth table should be a list that is appending
-        as a function of the iteration over argument to generate a final table
-        that would be the selection.
-
-        Remember to throw a warning if all the table is False (if not any()).
+        Supports flexible selection using:
+        - Single values
+        - Lists of values
+        - Ranges (e.g. "1-5")
+        - Wildcards
 
         Args:
-            subject: Subject identifier
-            session: Session identifier
-            datatype: Data type identifier
-            task: Task identifier
-            run: Run identifier
-            acquisition: Acquisition identifier
-            description: Description identifier
-            suffix: Suffix identifier
-            extension: File extension
-            Returns:
-            pd.DataFrame: DataFrame containing selected files and their BIDS entities
-        """
+            kwargs: key-words argument for the selection:
+                subject: Subject identifier(s)
+                session: Session identifier(s)
+                datatype: Data type identifier(s)
+                task: Task identifier(s)
+                run: Run number(s)
+                acquisition: Acquisition identifier(s)
+                description: Description identifier(s)
+                suffix: Suffix identifier(s)
+                extension: File extension(s)
 
+        Returns:
+            pd.DataFrame: Selected subset of database matching criteria
+        """
         possible_arguments = [
             "subject",
             "session",
@@ -564,21 +667,39 @@ class BidsArchitecture(BidsQuery):
                     raise TypeError("Argument must be either string or list")
 
         selection = reduce(lambda x, y: x & y, condition_for_select)
-        return self.database.loc[selection]
+        self.database = self.database.loc[selection]
+        return self
     
-    def report(self):
-        return BidsReporter(self.database)
+    def copy(self) -> 'BidsArchitecture':
+        """Return a shallow copy of the BidsSelector instance."""
+        return copy.copy(self)
+    
+    def report(self) -> 'BidsDescriptor':
+        """Generate report of database contents.
+
+        Returns:
+            BidsDescriptor: Reporter object with database summary
+        """
+        return BidsDescriptor(self.database)
 
 
-#TODO I want to add a method to the BidsArchitecture to generate a "report". It
-# will return a BidsReporter object. I also have to finish to write the dunder
-# methods of BidsReporter.
+#TODO I have to finish to write the dunder methods of BidsDescriptor.
 
 @dataclass
-class BidsReporter:
+class BidsDescriptor:
+    """Class for generating reports on BIDS database contents.
+    
+    Creates summary reports and provides access to unique values for each
+    BIDS entity in the database.
+
+    Attributes:
+        database (pd.DataFrame): Database of BIDS files
+        {entity}s (tuple): Unique values for each BIDS entity
+    """
     database: pd.DataFrame
 
     def __post_init__(self):
+        """Initialize reporter by creating entity value tuples."""
         for column in self.database.columns:
             setattr(self,column+"s",tuple(self.database[column].unique()))
     
