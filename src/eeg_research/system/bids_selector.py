@@ -1,130 +1,264 @@
-"""Module that host the BIDSselector class."""
+"""Module that host the BIDS architecture and selector classes.
+
+The pybids or mne-bids packages are a little bit too strict
+when it comes to deal with datatype that are not BIDS standardized. Often
+in derivatives we have this kind of non-standardized datatype such as
+'eyetracking' or 'brainstate' or 'respiration' that are important to separate
+as individual modality. The workaround is to either do a monkey patching to the
+packages by forcing it to allow such datatype or write from scratch a separate
+class that would be less strict.
+The monkey patching is not very pythonic and is not recommended in the dev community
+Because of the side effect that can induce. Therefore I am on the road to
+write another 'bids-like' data handler (also simplier) from scratch.
+This will be useful for everybody dealing with pseudo BIDS layout with the
+possibility to customize the queries.
+"""
 
 import os
-import re
 from dataclasses import dataclass
+from functools import reduce
+from pathlib import Path
+from warnings import warn
+from functools import cached_property
 
-import bids
+import pandas as pd
+
+@dataclass
+class BasePath:
+    root: Path | None = None
+    subject: str | None = None
+    session: str | None = None
+    datatype: str | None = None
+    task: str | None = None
+    acquisition: str | None = None
+    run: str | None = None
+    description: str | None = None
+    suffix: str | None = None
+    extension: str | None = None
+
+    def __post_init__(self):
+        if self.extension and "." not in self.extension:
+            self.extension = "." + self.extension
+    def __str__(self):
+        string_list = []
+        for attribute, value in self.__dict__.items():
+            if not "_" in attribute:
+                string_list.append(f"{attribute}: {value}")
+
+        return "\n".join(string_list)
+
+    def _make_path(self, absolute=True):
+        relative_path = Path(
+            os.path.join(
+                f"sub-{self.subject}",
+                f"ses-{self.session}",
+                self.datatype,
+            )
+        )
+
+        if absolute and getattr(self,"root", False):
+            return self.root / relative_path
+        else:
+            return relative_path
+
+    def _make_basename(self):
+        fname_elem = [
+            f"sub-{self.subject}",
+            f"ses-{self.session}",
+            f"task-{self.task}",
+            self.suffix,
+        ]
+        if self.description:
+            fname_elem.insert(3, f"desc-{self.description}")
+        if self.run:
+            fname_elem.insert(3, f"run-{self.run}")
+        if self.acquisition:
+            fname_elem.insert(3, f"acq-{self.acquisition}")
+        
+        fname_elem = [elem for elem in fname_elem if elem is not None]
+
+        return "_".join(fname_elem)
+
+    def parse_filename(self, file: Path):
+        if isinstance(file, str):
+            file = Path(file)
+
+        file_parts = {}
+        desired_keys = ["task", "run", "desc", "acq"]
+        splitted_filename = file.stem.split("_")
+
+        if len(file.parts) > 1:
+            file_parts["datatype"] = file.parts[-2]
+        else:
+            file_parts["datatype"] = splitted_filename[-1]
+            
+        file_parts["subject"] = file.name.split("_")[0].split("-")[1]
+        file_parts["session"] = file.name.split("_")[1].split("-")[1]
+
+        for desired_key in desired_keys:
+            if desired_key in file.stem:
+                value = [
+                    part.split("-")[1]
+                    for part in splitted_filename
+                    if desired_key in part
+                ][0]
+            else:
+                value = None
+
+            if desired_key == "desc":
+                desired_key = "description"
+
+            elif desired_key == "acq":
+                desired_key = "acquisition"
+
+            file_parts[desired_key] = value
+
+        file_parts["suffix"] = splitted_filename[-1]
+        file_parts["extension"] = file.suffix
+
+        return file_parts
 
 
 @dataclass
-class BIDSselector:
-    """A class for flexible selection of BIDS files based on customizable criteria.
-
-    This class allows users to select files from a BIDS dataset by specifying
-    various BIDS entities such as subject, session, task, run, and more. Users
-    can input ranges, individual IDs, or lists to customize file selection
-    without manually specifying each file. This is especially useful for large
-    datasets where the starting and ending IDs may be unknown or numerous.
-
-    Args:
-        root (str | os.PathLike): Root directory of the BIDS dataset.
-        subject (str | None, optional): Subject(s) to select. Can be
-            a single ID, a range (e.g., "10-100"), or '*' for all subjects.
-        session (str | None, optional): Session(s) to select. Similar
-            input options as `subject`.
-        task (str | None, optional): Task(s) to select.
-        run (str | None, optional): Run(s) to select.
-        datatype (str | None, optional): Data type(s) to select.
-        suffix (str | None, optional): File suffix(es) to select.
-        extension (str | None, optional): File extension(s) to select.
-
-    Example:
-        To select all subjects from "10" onward, specify `subject='10-*'`.
-        To select up to subject "20" only, use `subject='*-20'`. Alternatively,
-        provide a list of specific subject IDs (e.g., `subject=['10', '15', '30']`).
-
-    Attributes:
-        user_input (dict): Dictionary of user-provided selections for various
-            BIDS entities.
-        _original_layout (bids.BIDSLayout): The original BIDS layout for
-            querying files.
-        layout (list): The BIDS layout, filtered by the current selection
-            criteria.
-
-    Methods:
-        __post_init__: Completes initialization by regularizing attributes
-            and setting BIDS attributes based on user input.
-        __str__: Returns a string representation of the current selection
-            criteria and the number of matching files.
-        __add__: Merges selections with another BIDSselector instance or
-            dictionary.
-        to_dict: Returns the current BIDS entity attributes as a dictionary.
-        set_bids_attributes: Updates the BIDS attributes for selection.
-
-    Internal Helper Methods:
-        _regularize_input_str: Removes prefixes from entity values for
-            consistent selection.
-        _regularize_attributes: Regularizes prefixes across all BIDS
-            entities in the object.
-        _set_layout: Initializes a new BIDS layout with a specified indexer.
-        _convert_input_to_list: Parses range or list arguments for entities.
-    """
-
-    root: str | os.PathLike
+class BidsPath(BasePath):
     subject: str | None = None
     session: str | None = None
+    datatype: str | None = None
+    task: str | None = None
+    suffix: str | None = None
+    extension: str | None = None
+    root: Path | None = None
+    run: str | None = None
+    acquisition: str | None = None
+    description: str | None = None
+
+    @classmethod
+    def from_filename(cls, file: str | os.PathLike):
+        file_parts = super(BidsPath, cls).parse_filename(cls,file)
+        return cls(**file_parts)
+
+    def __post_init__(self):
+        return super().__post_init__()
+
+    @property
+    def basename(self):
+        return super()._make_basename()
+
+    @property
+    def filename(self):
+        return self.basename + self.extension
+
+    @property
+    def absolute_path(self):
+        if self.root:
+            return super()._make_path(absolute=True)
+        else:
+            warn(
+                "There was no root path detected. Setting relative "
+                "path as the root path"
+            )
+            return super()._make_path(absolute=False)
+
+    @property
+    def relative_path(self):
+        return super()._make_path(absolute=False)
+
+    @property
+    def fullpath(self):
+        if getattr(self,'root', False):
+            return self.absolute_path / self.filename
+        else:
+            return self.relative_path / self.filename
+
+@dataclass
+class BidsQuery(BidsPath):
+    root: Path
+    subject: str | None = None
+    session: str | None = None
+    datatype: str | None = None
     task: str | None = None
     run: str | None = None
-    datatype: str | None = None
+    acquisition: str | None = None
+    description: str | None = None
     suffix: str | None = None
     extension: str | None = None
 
     def __post_init__(self) -> None:
-        """Finishing some initializations."""
-        self._original_layout = bids.layout.BIDSLayout(root=self.root, validate=False)
-        self.user_input = self.to_dict()
-        self._standardize_attributes()
-        self.set_bids_attributes()
+        
+        required_attrs = [
+            "subject",
+            "session",
+            "datatype",
+            "task",
+            "suffix",
+            "extension",
+        ]
 
-    def __str__(self) -> str:
-        """Public string representation when calling print().
+        
 
-        Returns:
-            str: String representation
-        """
-        str_list = list()
-        for attribute, value in self.to_dict().items():
-            if value is None:
-                all_existing_values = self._original_layout.get(
-                    return_type="id", target=attribute
-                )
-
-                all_existing_values = [str(val) for val in all_existing_values]
-
-                if len(all_existing_values) <= 4:
-                    specification_str = (
-                        f"({ ', '.join(list(map(lambda s: str(s), 
-                        all_existing_values))) })"
-                    )
+        for attr in required_attrs:
+            if getattr(self, attr) is None:
+                if attr == "extension":
+                    setattr(self, attr, ".*")
                 else:
-                    specification_str = (
-                        f"({str(all_existing_values[0])} ... {str(all_existing_values[-1])})"
-                    )
+                    setattr(self, attr, "*")
 
-                value_length = "All"
+            elif getattr(self,attr) is not None and attr == "task":
+                setattr(self, attr, getattr(self,attr) + "*")
+        
+        for attr in ["run", "acquisition", "description"]:
+            if getattr(self, attr) is not None:
+                setattr(self,attr, getattr(self, attr) + "*")
+        
+        return super().__post_init__()
+        
 
-            elif isinstance(value, str):
-                specification_str = f"({value})"
-                value_length = "1"
+    @property
+    def filename(self):
+        potential_cases = [
+            "*_*",
+            "**",
+            "*.*"
+        ]
+        filename = super().filename
+        for case in potential_cases:
+            filename = filename.replace(case,"*")
+        return filename
 
-            elif isinstance(value, list):
-                if len(value) <= 4:
-                    specification_str = (
-                        f"({ ', '.join(list(map(lambda s: str(s),value)))})"
-                    )
-                else:
-                    specification_str = f"({str(value[0])} ... {str(value[-1])})"
-                value_length = str(len(value))
-
-            str_list.append(
-                f"{str(attribute).capitalize()}s: {value_length} "
-                f"{specification_str}"
+    def generate(self):
+        if self.root:
+            return self.root.rglob(os.fspath(self.relative_path / self.filename))
+        else:
+            raise Exception(
+                "Root was not defined. Please instantiate the object"
+                " by setting root to a desired path"
             )
 
-        files = self.layout
-        all_str = f"{'\n'.join(str_list)}\nFiles: {len(files)}"
-        return all_str
+
+@dataclass
+class BidsArchitecture(BidsQuery):
+    
+    root: Path
+    subject: str | None = None
+    session: str | None = None
+    datatype: str | None = None
+    task: str | None = None
+    run: str | None = None
+    acquisition: str | None = None
+    description: str | None = None
+    suffix: str | None = None
+    extension: str | None = None
+
+    def __post_init__(self) -> None:  # noqa: D105
+        super().__post_init__()
+        self._db_lookup_generator = self.generate()
+    
+    def __next__(self):
+        return next(self._db_lookup_generator)
+    
+    def __iter__(self):
+        return iter(self._db_lookup_generator)
+
 
     def __add__(self, other):  # noqa: ANN204, D105, ANN001
         if isinstance(other, self.__class__):
@@ -166,35 +300,97 @@ class BIDSselector:
 
             setattr(self, dict_key, list(set(val).union(set(dict_value))))
 
-    def to_dict(self) -> dict:
-        """When inputs are needed.
+    def __iter__(self):
+        return self.database["filename"].values
 
-        Returns:
-            dict: The object attributes in a dictionary.
-        """
-        return {
-            "subject": self.subject,
-            "session": self.session,
-            "task": self.task,
-            "run": self.run,
-            "datatype": self.datatype,
-            "suffix": self.suffix,
-            "extension": self.extension,
-        }
-
-    def _standardize_input_str(self, value: str) -> str:
-        """Standardize the input string for consistency.
-
-        Sometime we can think about a list of subject being ['sub-01','sub-02']
-        while the authorized input is ['01', '02'] or '01-*'. This function
-        remove the prefix from the input string for consistency inside of the
-        class and also allow more flexibility on the user side.
+    @cached_property
+    def database(self) -> pd.DataFrame:
+        """Scan filesystem and build DataFrame of matching files.
 
         Args:
-            value (str): The value to convert
+            query: Glob pattern for file selection
 
         Returns:
-            str: The converted value
+            pd.DataFrame: DataFrame containing all matching files and their BIDS entities
+        """
+        database_keys = [
+            "root",
+            "subject",
+            "session",
+            "datatype",
+            "task",
+            "run",
+            "acquisition",
+            "description",
+            "suffix",
+            "extension",
+            "filename"
+        ]
+
+        data_base_dict: dict[str, list] = {key: [] for key in database_keys}
+
+        for file in self.generate():
+            bids_path = BidsPath.from_filename(file)
+            for key, value in bids_path.__dict__.items():
+                if key == "root":
+                    data_base_dict['root'].append(self.root)
+                else:
+                    data_base_dict[key].append(value)
+
+            data_base_dict['filename'].append(file)
+
+        return pd.DataFrame(data_base_dict)
+    
+    def print_summary(self) -> str:
+        """Public string representation when calling print().
+
+        Returns:
+            str: String representation
+        """
+        if not getattr(self, 'database'):
+            raise Exception("No database generated. Run the `get_layout` method"\
+                " before.")
+            
+        str_list = list()
+        print(f"Results for query: {self.fullpath}")
+        for attribute in self.database.columns:
+            if attribute == "filename":
+                continue
+
+            all_existing_values = [
+                str(val) for val in self.database[attribute].unique()
+            ]
+
+            if len(all_existing_values) <= 4:
+                specification_str = (
+                    f"({ ', '.join([str(s) for s in all_existing_values])})"
+                )
+            else:
+                specification_str = (
+                    f"({str(all_existing_values[0])} "
+                    f"... {str(all_existing_values[-1])})"
+                )
+
+            value_length = str(len(all_existing_values))
+
+            str_list.append(
+                f"{str(attribute).capitalize()}s: {value_length} "
+                f"{specification_str}"
+            )
+
+        all_str = f"{'\n'.join(str_list)}\nFiles: {len(self.database)}"
+        return all_str
+
+    def _standardize_input_str(self, value: str) -> str:
+        """Remove BIDS prefixes from input strings.
+
+        Standardizes inputs by removing prefixes like 'sub-', 'ses-', etc.
+
+        Args:
+            value: Input string to standardize
+
+        Returns:
+            str: Standardized string without BIDS prefixes
         """
         prefix_list = [
             "sub-",
@@ -209,112 +405,183 @@ class BIDSselector:
 
         return value
 
-    def _standardize_attributes(self) -> "BIDSselector":
-        """Remove eventual prefixes for all the arguments of the object.
+    def _get_range(
+        self,
+        dataframe_column: pd.core.series.Series,
+        start: int | str | None = None,
+        stop: int | str | None = None,
+    ) -> pd.core.series.Series:
+        if isinstance(start, str):
+            start = int(start)
 
-        Returns:
-             BIDSselector: The instance modified
-        """
-        for attribute, value in self.to_dict().items():
-            if isinstance(value, str):
-                regularized_value = self._standardize_input_str(value)
+        if isinstance(stop, str):
+            stop = int(stop)
 
-            elif isinstance(value, list):
-                regularized_value = [self._standardize_input_str(val) for val in value]  # type: ignore
-            else:
-                regularized_value = value
+        dataframe_column = dataframe_column.apply(lambda s: int(s))
 
-            setattr(self, attribute, regularized_value)
+        if start is None or start == "*":
+            start = min(dataframe_column)
 
-        return self
+        if stop is None or stop == "*":
+            stop = max(dataframe_column)
 
-    def _set_layout(self, indexer: bids.BIDSLayoutIndexer) -> bids.BIDSLayout:
-        """Set the BIDS layout with the given indexer based on args.datafolder."""
-        return bids.BIDSLayout(
-            root=self.root,
-            validate="derivative" not in str(self.root).lower(),
-            is_derivative="derivative" in str(self.root).lower(),
-            indexer=indexer,
-        )
+        return (start <= dataframe_column) & (dataframe_column < stop)
 
-    def _convert_input_to_list(self, entity: str, value: str | None) -> list | None:
-        """Parse range argument.
+    def _get_single_loc(
+        self, dataframe_column: pd.core.series.Series, value: str
+    ) -> pd.core.series.Series:
+        locations_found = dataframe_column == value
+        if not any(locations_found):
+            Warning("No location corresponding found in the database")
+            locations_found.apply(lambda s: not (s))
+
+        return locations_found
+
+    def _is_numerical(
+        self, dataframe_column: pd.core.series.Series
+    ) -> pd.core.series.Series:
+        return all(dataframe_column.apply(lambda x: str(x).isdigit()))
+
+    def _interpret_string(
+        self,
+        dataframe_column: pd.core.series.Series,
+        string: str,
+    ) -> pd.core.series.Series:
+        """I want to interpret the string when there is a `-`. Check if
+        The splitted results are 2 digit. If not throw an error saying that the
+        input must be 2 digit separated by a `-` or 1 digit and a wild card `*`
+        separated by a `-`. If everything is ok run the get range.
 
         Args:
-            entity: The entity to get from the layout.
-            value: The value to parse.
-
-        Returns:
-            A list of IDs or a string.
-
-        Raises:
-            ValueError: If the entity contains non-integers and a range is provided.
-            IndexError: If the start or end index is out of range.
+            string (str): _description_
         """
-        existing_values = self._original_layout.get(target=entity, return_type="id")
+        if "-" in string:
+            start, stop = string.split("-")
+            conditions = [
+                (start.isdigit() or start == "*"),
+                (stop.isdigit() or stop == "*"),
+            ]
 
-        if value == "*" or value is None:
-            selection = existing_values
+            if not all(conditions):
+                raise ValueError(
+                    "Input must be 2 digits separated by a `-` or "
+                    "1 digit and a wild card `*` separated by a `-`"
+                )
 
-        elif "," in value:
-            if "[" in value:
-                value = value[1:-1]
-            from_input = set(value.replace(" ", "").split(","))
-            from_existing = set(existing_values)
-            selection = list(from_input.intersection(from_existing))
-
-        elif "-" in value:
-            start, end = value.split("-")
-            if start == "*":
-                selection = existing_values[: existing_values.index(end) + 1]
-            elif end == "*":
-                selection = existing_values[existing_values.index(start) :]
-            else:
-                selection = existing_values[
-                    existing_values.index(start) : existing_values.index(end)
-                ]
+            return self._get_range(
+                dataframe_column=dataframe_column,
+                start=int(start) if start.isdigit() else None,
+                stop=int(stop) if stop.isdigit() else None,
+            )
 
         else:
-            selection = value
+            return self._get_single_loc(dataframe_column, string)
 
-        return selection
+    def _perform_selection(
+        self, dataframe_column: pd.core.series.Series, value: str
+    ) -> pd.core.series.Series:
+        if self._is_numerical(dataframe_column):
+            return self._interpret_string(dataframe_column, value)
+        else:
+            return self._get_single_loc(dataframe_column, value)
 
-    def set_bids_attributes(self) -> "BIDSselector":
-        """Set the converted values to all bids attributes.
+    def select(self, **kwargs) -> pd.DataFrame:
+        """Select files from database based on BIDS entities.
 
-        Returns:
-            dict: The attribute/value pairs
+        If the argument is not None check if it is a list or a string. If it is
+        a string then check if there is any `-` and `*`. If it is the case then
+        call the string interpreter to generate a truth table of a selection of
+        a range. If not then only get the truth table directly with an == passed
+        on the dataframe. Check if the string value exist in the unique values
+        of the dataframe. If not throw an error.
+        If it is a list then iterate over the list and for each value of the list
+        perfor the check above. The truth table should be a list that is appending
+        as a function of the iteration over argument to generate a final table
+        that would be the selection.
+
+        Remember to throw a warning if all the table is False (if not any()).
+
+        Args:
+            subject: Subject identifier
+            session: Session identifier
+            datatype: Data type identifier
+            task: Task identifier
+            run: Run identifier
+            acquisition: Acquisition identifier
+            description: Description identifier
+            suffix: Suffix identifier
+            extension: File extension
+            Returns:
+            pd.DataFrame: DataFrame containing selected files and their BIDS entities
         """
-        for attribute, old_value in self.to_dict().items():
-            setattr(self, attribute, self._convert_input_to_list(attribute, old_value))
 
-        return self
-
-    @property
-    def layout(self) -> bids.BIDSLayout:
-        """Update the BIDSLayout to only include given entities.
-
-        As of April 2024, BIDSLayoutIndexer's **filters argument does not work.
-        Therefore, a workaround is implemented to filter out files that are not indexed.
-        """
-        self.set_bids_attributes()
-        all_files = self._original_layout.get(return_type="file")
-        filtered_files = self._original_layout.get(
-            return_type="file", **{key: val for key, val in self.to_dict().items()}
-        )
-
-        # Get the files to ignore
-        ignored_files = list(set(all_files) - set(filtered_files))
-
-        # Define the default ignore patterns
-        default_ignore = [
-            re.compile(r"^/(code|models|sourcedata|stimuli)"),
-            re.compile(r"/\."),
+        possible_arguments = [
+            "subject",
+            "session",
+            "datatype",
+            "task",
+            "run",
+            "acquisition",
+            "description",
+            "suffix",
+            "extension",
         ]
 
-        # Create a new BIDSLayoutIndexer object to also ignored these files
-        indexer = bids.BIDSLayoutIndexer(ignore=default_ignore + ignored_files)
+        for argument_name in kwargs.keys():
+            if argument_name not in possible_arguments:
+                raise Exception(
+                    "Argument must be one of the following"
+                    f"{', '.join(possible_arguments)}"
+                )
 
-        # Create a new BIDSLayout object with the new indexer
-        layout = self._set_layout(indexer)
-        return layout.get(return_type="filename")
+        condition_for_select = list()
+        for name, value in kwargs.items():
+            if value is not None:
+                conditions = [isinstance(value, str), isinstance(value, list)]
+
+                if any(conditions):
+                    col = self.database[name]
+
+                    if isinstance(value, str):
+                        value = [value]
+
+                    temp_selection = list()
+                    for individual_value in value:
+                        individual_value = self._standardize_input_str(individual_value)
+                        temp_selection.append(
+                            self._perform_selection(col, individual_value)
+                        )
+
+                    if len(temp_selection) > 1:
+                        temp_selection = reduce(lambda x, y: x | y, temp_selection)
+
+                    else:
+                        temp_selection = temp_selection[0]
+
+                    condition_for_select.append(temp_selection)
+
+                else:
+                    raise TypeError("Argument must be either string or list")
+
+        selection = reduce(lambda x, y: x & y, condition_for_select)
+        return self.database.loc[selection]
+    
+    def report(self):
+        return BidsReporter(self.database)
+
+
+#TODO I want to add a method to the BidsArchitecture to generate a "report". It
+# will return a BidsReporter object. I also have to finish to write the dunder
+# methods of BidsReporter.
+
+@dataclass
+class BidsReporter:
+    database: pd.DataFrame
+
+    def __post_init__(self):
+        for column in self.database.columns:
+            setattr(self,column+"s",tuple(self.database[column].unique()))
+    
+    
+class BidsSelector:
+    pass
