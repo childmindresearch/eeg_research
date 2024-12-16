@@ -93,7 +93,6 @@ def test_bids_query():
     assert query.subject == "*"
     assert query.session == "*"
     assert query.datatype == "*"
-    assert query.task == "*"
 
     path_cond = "sub-*/ses-*/*"
     assert str(query.relative_path) == path_cond
@@ -182,22 +181,22 @@ cases = [
 
 expected = [
     "sub-*_ses-*_task-aTask*",
-    "sub-*_ses-*_task-*_run-01*",
+    "sub-*_ses-*_run-01*",
     "sub-*_ses-*_task-aTask*_run-01*",
-    "sub-*_ses-*_task-*_acq-anAcq*",
+    "sub-*_ses-*_acq-anAcq*",
     "sub-*_ses-*_task-aTask*_acq-anAcq*",
     "sub-*_ses-*_task-aTask*_acq-anAcq*_run-01*",
-    "sub-*_ses-*_task-*_desc-aDescription*",
+    "sub-*_ses-*_desc-aDescription*",
     "sub-*_ses-*_task-aTask*_desc-aDescription*",
     "sub-*_ses-*_task-aTask*_run-01*_desc-aDescription*",
     "sub-*_ses-*_task-aTask*_acq-anAcq*_run-01*_desc-aDescription*",
-    "sub-*_ses-*_task-*_eeg.*",
+    "sub-*_ses-*_eeg.*",
     "sub-*_ses-*_task-aTask*_eeg.*",
     "sub-*_ses-*_task-aTask*_acq-anAcq*_eeg.*",
     "sub-*_ses-*_task-aTask*_run-01*_eeg.*",
     "sub-*_ses-*_task-aTask*_desc-aDescription*_eeg.*",
-    "sub-*_ses-*_task-*.vhdr",
-    "sub-*_ses-*_task-*_eeg.vhdr",
+    "sub-*_ses-*.vhdr",
+    "sub-*_ses-*_eeg.vhdr",
     "sub-*_ses-*_task-aTask*_run-01*.vhdr",
     "sub-*_ses-*_task-aTask*_desc-aDescription*.vhdr",
     
@@ -212,6 +211,7 @@ def test_bids_query_filename(case, expected):
     
     # Assert the filename matches the expected value
     assert query.filename == expected, f"Failed for case: {case}"
+    assert query.fullpath == Path("/data/sub-*/ses-*/*/") / expected, f"Failed for case: {case}"
 
 def test_bids_query_generate():
     query = BidsQuery(root=Path("/data"), subject="001")

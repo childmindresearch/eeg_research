@@ -26,6 +26,82 @@ from warnings import warn
 
 import pandas as pd
 
+class BidsValidationError(Exception):
+    pass
+
+def has_standard_name(key):
+    standard_names = [
+    "sub",
+    "ses",
+    "task",
+    "acq",
+    "run",
+    "record",
+    "desc",
+    ]
+    
+    
+    return any([name == key for name in standard_names])
+
+def get_full_name(key):
+    mapping = {
+    "sub":"subject",
+    "ses": "sessions",
+    "task":"task",
+    "acq":"acquisition",
+    "run": "run",
+    "recording":"recording",
+    "desc": "description",
+    }
+    return mapping.get(key)
+
+def _validate_bids_name(elements: list) -> tuple[list, list]:
+    """Helper function to validate BIDS naming convention.
+    
+    Args:
+        elements: List of path/filename elements to validate
+        
+    Returns:
+        tuple containing:
+        - list of indicator strings for error messages
+        - list of boolean validation results
+    """
+    indicators = []
+    element_ok = []
+    
+    for element in elements:
+        if "-" in element and has_standard_name(element.split("-")[0]):
+            indicators.append(" " * len(element))
+            element_ok.append(True)
+        else:
+            indicators.append("^" * (len(element)))
+            element_ok.append(False)
+            
+    return indicators, element_ok
+
+def validate_bids_path(path: Union[str,Path]):
+    if isinstance(path, str):
+        path = Path(path)
+    
+    if path.is_file():
+        path = path.parents[0]
+        
+    elements = [os.fspath(path.parents[path_idx]) for path_idx in range(2)]
+    indicators, element_ok = _validate_bids_name(elements)
+    indicators.insert(0, " "*(len(os.fspath(path.parents[2])) + 1))
+    
+    if not all(element_ok):
+        message = f"Non standardized BIDS name\n{path}\n {' '.join(indicators)}"
+        raise BidsValidationError(message)
+
+def validate_bids_file(file):
+    elements = os.fspath(file.name).split("_")[:-1]
+    indicators, element_ok = _validate_bids_name(elements)
+    indicators.insert(0, " "*(len(os.fspath(file.parent)))+1)
+    
+    if not all(element_ok):
+        message = f"Non standardized BIDS name\n{file}\n {' '.join(indicators)}"
+        raise BidsValidationError(message)
 
 @dataclass
 class BasePath:
@@ -120,19 +196,26 @@ class BasePath:
         fname_elem = [
             f"sub-{self.subject}",
             f"ses-{self.session}",
-            f"task-{self.task}",
             self.suffix,
         ]
         if self.description:
-            fname_elem.insert(3, f"desc-{self.description}")
+            fname_elem.insert(2, f"desc-{self.description}")
         if self.run:
-            fname_elem.insert(3, f"run-{self.run}")
+            fname_elem.insert(2, f"run-{self.run}")
         if self.acquisition:
-            fname_elem.insert(3, f"acq-{self.acquisition}")
+            fname_elem.insert(2, f"acq-{self.acquisition}")
+        if self.task:
+            fname_elem.insert(2, f"task-{self.task}")
         
         fname_elem = [elem for elem in fname_elem if elem is not None]
         return "_".join(fname_elem)
 
+        
+    def _check_filename(self, file: Union[str, Path]):
+        pass
+
+        
+        
     def parse_filename(self, file: Union[str, Path]) -> Dict[str, Optional[str]]:
         """Parse BIDS entities from filename.
 
@@ -149,7 +232,7 @@ class BasePath:
             file = Path(file)
 
         file_parts: Dict[str, Optional[str]] = {}
-        desired_keys = ["task", "run", "desc", "acq"]
+        desired_keys = ["run", "desc", "acq", "task"]
         splitted_filename = file.stem.split("_")
 
         if len(file.parts) > 1:
@@ -310,7 +393,6 @@ class BidsQuery(BidsPath):
             "subject",
             "session",
             "datatype",
-            "task",
             "suffix",
             "extension",
         ]
@@ -322,10 +404,7 @@ class BidsQuery(BidsPath):
                 else:
                     setattr(self, attr, "*")
 
-            elif getattr(self,attr) is not None and attr == "task":
-                setattr(self, attr, getattr(self,attr) + "*")
-        
-        for attr in ["run", "acquisition", "description"]:
+        for attr in ["task", "run", "acquisition", "description"]:
             if getattr(self, attr) is not None:
                 setattr(self,attr, getattr(self, attr) + "*")
         
@@ -428,12 +507,17 @@ class BidsArchitecture(BidsQuery):
             "description",
             "suffix",
             "extension",
-            "filename"
+            "atime",
+            "mtime",
+            "ctime",
+            "filename",
         ]
 
         data_base_dict: dict[str, list] = {key: [] for key in database_keys}
 
         for file in self.generate():
+            if 'test' in file.name.lower():
+                continue
             bids_path = BidsPath.from_filename(file)
             for key, value in bids_path.__dict__.items():
                 if key == "root":
@@ -441,7 +525,12 @@ class BidsArchitecture(BidsQuery):
                 else:
                     data_base_dict[key].append(value)
 
+            file_stats = file.stat()
+            data_base_dict['atime'].append(int(file_stats.st_atime))
+            data_base_dict['mtime'].append(int(file_stats.st_mtime))
+            data_base_dict['ctime'].append(int(file_stats.st_ctime))
             data_base_dict['filename'].append(file)
+
 
         return pd.DataFrame(data_base_dict)
     
@@ -500,6 +589,7 @@ class BidsArchitecture(BidsQuery):
             "sub-",
             "ses-",
             "task-",
+            "acq-",
             "run-",
             "desc-",
         ]
@@ -640,9 +730,8 @@ class BidsArchitecture(BidsQuery):
         condition_for_select = list()
         for name, value in kwargs.items():
             if value is not None:
-                conditions = [isinstance(value, str), isinstance(value, list)]
 
-                if any(conditions):
+                if hasattr(value, '__iter__'):
                     col = self.database[name]
 
                     if isinstance(value, str):
@@ -664,7 +753,8 @@ class BidsArchitecture(BidsQuery):
                     condition_for_select.append(temp_selection)
 
                 else:
-                    raise TypeError("Argument must be either string or list")
+                    raise TypeError("Argument must be an iterable,"\
+                        f"got {type(value)} instead")
 
         selection = reduce(lambda x, y: x & y, condition_for_select)
         self.database = self.database.loc[selection]
@@ -683,7 +773,31 @@ class BidsArchitecture(BidsQuery):
         return BidsDescriptor(self.database)
 
 
-#TODO I have to finish to write the dunder methods of BidsDescriptor.
+#TODO 
+# - Finish to write the dunder methods of BidsDescriptor.
+#
+# - Add Unix style info on files (accesed date, changed date, modified date).
+#
+# - Add possibility to check if file exist make a report like (brainstates, eeg, 
+#   eyetracking).
+#
+# - Add listing such as list sessions per subject, list runs per tasks, list tasks
+#   per subjects etc.
+#   It would be a method like: listing('session', 'subject') or listing('task', 
+#   'subject').
+#
+# - Add possibility to report what file are breaking bids and where in the filename.
+#   To do the above add a checker helper that will check if the path name and filename
+#   respect the minimum bids standard. The checker will be able to flag where the
+#   name breaks the bids in the error message. Design a custom error handling.
+#
+# - Add a print tree of the selection
+#
+# - Add possibility to ignore file from a .bidsignore file that will be in the 
+#   root folder.
+#
+# - Write the glob in RUST that will generate a json file to be read in python 
+#   and used in a dataframe (pandas or Polar)
 
 @dataclass
 class BidsDescriptor:
