@@ -29,7 +29,7 @@ import pandas as pd
 class BidsValidationError(Exception):
     pass
 
-def has_standard_name(key):
+def contain_standard_name(key):
     standard_names = [
     "sub",
     "ses",
@@ -41,7 +41,7 @@ def has_standard_name(key):
     ]
     
     
-    return any([name == key for name in standard_names])
+    return any([name in key for name in standard_names])
 
 def get_full_name(key):
     mapping = {
@@ -71,7 +71,7 @@ def _validate_bids_name(elements: list) -> tuple[list, list]:
     
     for element in elements:
         if "-" in element and has_standard_name(element.split("-")[0]):
-            indicators.append(" " * len(element))
+            indicators.append(" " * (len(element)+1))
             element_ok.append(True)
         else:
             indicators.append("^" * (len(element)))
@@ -97,7 +97,7 @@ def validate_bids_path(path: Union[str,Path]):
 def validate_bids_file(file):
     elements = os.fspath(file.name).split("_")[:-1]
     indicators, element_ok = _validate_bids_name(elements)
-    indicators.insert(0, " "*(len(os.fspath(file.parent)))+1)
+    indicators.insert(0, " "*(len(os.fspath(file.parent))))
     
     if not all(element_ok):
         message = f"Non standardized BIDS name\n{file}\n {' '.join(indicators)}"
