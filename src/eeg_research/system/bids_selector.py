@@ -793,13 +793,8 @@ class BidsArchitecture:
                     value = value.strip()
                     if value:  # Skip empty strings
                         mask &= self._perform_selection(self.database[key], value)
-
-        # Apply the combined mask and explicitly set the database
-        filtered_db = self.database[mask].copy()
-        new_instance._database = filtered_db  # Set the filtered database directly
         
-        # Clear the cached_property to ensure it uses the filtered database
-        if hasattr(new_instance, '_BidsArchitecture__database'):
-            delattr(new_instance, '_BidsArchitecture__database')
+        delattr(new_instance, 'database')
+        setattr(new_instance, 'database', self.database[mask].copy())
         
         return new_instance
