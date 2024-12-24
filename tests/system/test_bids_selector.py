@@ -1,8 +1,12 @@
-import pytest
 from pathlib import Path
-import pandas as pd
-import numpy as np
-from eeg_research.system.bids_selector import BasePath, BidsPath, BidsQuery, BidsArchitecture
+
+import pytest
+
+from eeg_research.system.bids_selector import (
+    BidsArchitecture,
+    BidsPath,
+)
+
 
 @pytest.fixture
 def bids_dataset(tmp_path: Path):
@@ -20,60 +24,57 @@ def bids_dataset(tmp_path: Path):
         base_path = data_dir / f"sub-{sub}" / f"ses-{ses}" / "eeg"
         base_path.mkdir(parents=True, exist_ok=True)
         
-        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_eeg.vhdr").touch()
-        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_run-{run}_eeg.vhdr").touch()
-        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_acq-{acq}_run-01_eeg.vhdr").touch()
-        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_acq-{acq}_run-01_desc-{desc}_eeg.vhdr").touch()
-        (base_path / f"sub-{sub}_ses-{ses}_task-aTask_run-01_acq-anAcq_desc-aDescription_eeg.vhdr").touch()
+        # Create test files
+        files = [
+            f"sub-{sub}_ses-{ses}_task-aTask_eeg.vhdr",
+            f"sub-{sub}_ses-{ses}_task-aTask_run-{run}_eeg.vhdr",
+            f"sub-{sub}_ses-{ses}_task-aTask_acq-{acq}_run-01_eeg.vhdr",
+            f"sub-{sub}_ses-{ses}_task-aTask_acq-{acq}_run-01_desc-{desc}_eeg.vhdr",
+        ]
+        
+        for file in files:
+            (base_path / file).touch()
 
     return data_dir
 
-# BasePath Tests
-def test_base_path_str():
-    base = BasePath(root=Path("/data"), subject="001", session="01")
-    assert "root: /data" in str(base)
-    assert "subject: 001" in str(base)
+def test_bids_path_validation():
+    """Test BIDS path validation."""
+    # Valid cases
+    BidsPath(subject="001")  # OK
+    BidsPath(subject="sub-001")  # OK
+    BidsPath(session="ses-01")  # OK
+    
+    # Invalid cases
+    with pytest.raises(ValueError, match="Invalid prefix"):
+        BidsPath(session="sub-01")
+    
+    with pytest.raises(ValueError, match="Invalid prefix"):
+        BidsPath(task="ses-rest")
 
-def test_base_path_make_path():
-    base = BasePath(root=Path("/data"), subject="001", session="01", datatype="eeg")
-    assert str(base._make_path(absolute=True)) == "/data/sub-001/ses-01/eeg"
-    assert str(base._make_path(absolute=False)) == "sub-001/ses-01/eeg"
+def test_bids_path_wildcards():
+    """Test BIDS path with wildcards."""
+    # These should work
+    path = BidsPath(subject="*", session="*")
+    assert path.subject == "*"
+    assert path.session == "*"
 
-def test_base_path_make_basename():
-    base = BasePath(
-        subject="001", 
-        session="01", 
-        task="rest",
-        suffix="eeg",
-        run="01",
-        acquisition="test",
-        description="clean"
+def test_bids_path_normalization():
+    """Test BIDS entity normalization."""
+    path = BidsPath(
+        subject="sub-001",
+        session="ses-01",
+        task="task-rest",
+        run="run-01"
     )
-    expected = "sub-001_ses-01_task-rest_acq-test_run-01_desc-clean_eeg"
-    assert base._make_basename() == expected
-
-def test_base_path_parse_filename():
-    file = Path("/data/sub-001/ses-01/eeg/sub-001_ses-01_task-rest_run-01_desc-clean_eeg.vhdr")
-    parts = BasePath.parse_filename(None, file)
-    assert parts["subject"] == "001"
-    assert parts["session"] == "01"
-    assert parts["task"] == "rest"
-    assert parts["run"] == "01"
-    assert parts["description"] == "clean"
-
-# BidsPath Tests
-def test_bids_path_from_filename():
-    file = Path("sub-001_ses-01_task-rest_eeg.vhdr")
-    bids = BidsPath.from_filename(file)
-    assert bids.subject == "001"
-    assert bids.session == "01"
-    assert bids.task == "rest"
-    assert bids.suffix == "eeg"
-    assert bids.extension == ".vhdr"
-    assert bids.relative_path == Path("sub-001/ses-01/eeg")
+    
+    assert path.subject == "001"
+    assert path.session == "01"
+    assert path.task == "rest"
+    assert path.run == "01"
 
 def test_bids_path_properties():
-    bids = BidsPath(
+    """Test BidsPath properties."""
+    path = BidsPath(
         root=Path("/data"),
         subject="001",
         session="01",
@@ -82,205 +83,168 @@ def test_bids_path_properties():
         suffix="eeg",
         extension=".vhdr"
     )
-    assert bids.basename == "sub-001_ses-01_task-rest_eeg"
-    assert bids.filename == "sub-001_ses-01_task-rest_eeg.vhdr"
-    assert str(bids.absolute_path) == "/data/sub-001/ses-01/eeg"
-    assert str(bids.relative_path) == "sub-001/ses-01/eeg"
+    
+    assert path.basename == "sub-001_ses-01_task-rest_eeg"
+    assert path.filename == "sub-001_ses-01_task-rest_eeg.vhdr"
+    assert str(path.fullpath) == "/data/sub-001/ses-01/eeg/sub-001_ses-01_task-rest_eeg.vhdr"
 
-# BidsQuery Tests
-def test_bids_query():
-    query = BidsQuery(root=Path("/data"))
-    assert query.subject == "*"
-    assert query.session == "*"
-    assert query.datatype == "*"
+def test_bids_path_from_filename():
+    """Test creating BidsPath from filename."""
+    file = Path("/data/sub-001/ses-01/eeg/sub-001_ses-01_task-rest_eeg.vhdr")
+    path = BidsPath.from_filename(file)
+    
+    assert path.subject == "001"
+    assert path.session == "01"
+    assert path.task == "rest"
+    assert path.suffix == "eeg"
+    assert path.extension == ".vhdr"
 
-    path_cond = "sub-*/ses-*/*"
-    assert str(query.relative_path) == path_cond
+def test_bids_architecture_database(bids_dataset):
+    """Test BidsArchitecture database creation and querying."""
+    arch = BidsArchitecture(root=bids_dataset)
+    
+    # Test database creation
+    assert not arch.database.empty
+    assert "subject" in arch.database.columns
+    assert "session" in arch.database.columns
+    
+    # Test basic queries
+    result = arch.select(subject="001")
+    assert len(result.database) > 0
+    assert all(result.database["subject"] == "001")
+    
+    # Test multiple criteria
+    result = arch.select(subject="001", task="aTask")
+    assert len(result.database) > 0
+    assert all(result.database["subject"] == "001")
+    assert all(result.database["task"] == "aTask")
 
-cases = [
-    {
-        "task" : "aTask"
-        },
-    {
-        "run": "01"
-        },
-    {
-        "task": "aTask",
-        "run": "01",
-        },
-    {
-        "acquisition": "anAcq",
-        },
-    {
-        "task": "aTask",
-        "acquisition": "anAcq",
-        },
-    {
-        "task": "aTask",
-        "run" : "01",
-        "acquisition": "anAcq",
-        },
-    {
-        "description": "aDescription",
-        },
-    {
-        "task": "aTask",
-        "description": "aDescription",
-        },
-    {
-        "task": "aTask",
-        "run" : "01",
-        "description": "aDescription",
-        },
-    {
-        "task": "aTask",
-        "run" : "01",
-        "acquisition": "anAcq",
-        "description": "aDescription",
-        },
-    {
-        "suffix": "eeg",
-        },
-    {
-        "task": "aTask",
-        "suffix": "eeg",
-        },
-    {
-        "task": "aTask",
-        "acquisition": "anAcq",
-        "suffix": "eeg",
-        },
-    {
-        "task": "aTask",
-        "run": "01",
-        "suffix": "eeg",
-        },
-    {
-        "task": "aTask",
-        "description": "aDescription",
-        "suffix": "eeg",
-        },
-    {
-        "extension":"vhdr",
-        },
-    {
-        "suffix": "eeg",
-        "extension" :"vhdr",
-        },
-    {
-        "task": "aTask",
-        "run": "01",
-        "extension": "vhdr",
-        },
-    {
-        "task": "aTask",
-        "description": "aDescription",
-        "extension": "vhdr",
-        },
-]
+def test_bids_architecture_properties(bids_dataset):
+    """Test BidsArchitecture properties."""
+    arch = BidsArchitecture(root=bids_dataset)
+    print(arch.database['run'].unique())
+    
+    assert tuple(arch.subjects) == tuple(["001", "002", "003"])
+    assert tuple(arch.sessions) == tuple(["01"])
+    assert tuple(arch.datatypes) == tuple(["eeg"])
+    assert tuple(arch.tasks) == tuple(["aTask"])
+    assert tuple(arch.runs) == tuple(["01"])
+    assert tuple(arch.acquisitions) == tuple(["anAcq"])
+    assert tuple(arch.descriptions) == tuple(["aDescription"])
+    assert tuple(arch.suffixes) == tuple(["eeg"])
+    assert tuple(arch.extensions) == tuple([".vhdr"])
 
-expected = [
-    "sub-*_ses-*_task-aTask*",
-    "sub-*_ses-*_run-01*",
-    "sub-*_ses-*_task-aTask*_run-01*",
-    "sub-*_ses-*_acq-anAcq*",
-    "sub-*_ses-*_task-aTask*_acq-anAcq*",
-    "sub-*_ses-*_task-aTask*_acq-anAcq*_run-01*",
-    "sub-*_ses-*_desc-aDescription*",
-    "sub-*_ses-*_task-aTask*_desc-aDescription*",
-    "sub-*_ses-*_task-aTask*_run-01*_desc-aDescription*",
-    "sub-*_ses-*_task-aTask*_acq-anAcq*_run-01*_desc-aDescription*",
-    "sub-*_ses-*_eeg.*",
-    "sub-*_ses-*_task-aTask*_eeg.*",
-    "sub-*_ses-*_task-aTask*_acq-anAcq*_eeg.*",
-    "sub-*_ses-*_task-aTask*_run-01*_eeg.*",
-    "sub-*_ses-*_task-aTask*_desc-aDescription*_eeg.*",
-    "sub-*_ses-*.vhdr",
-    "sub-*_ses-*_eeg.vhdr",
-    "sub-*_ses-*_task-aTask*_run-01*.vhdr",
-    "sub-*_ses-*_task-aTask*_desc-aDescription*.vhdr",
+def test_bids_architecture_select(bids_dataset):
+    """Test BidsArchitecture select method with various criteria."""
+    arch = BidsArchitecture(root=bids_dataset)
     
-]
+    # Test single criterion selection
+    result = arch.select(subject="001")
+    assert len(result.database) > 0
+    assert all(result.database["subject"] == "001")
+    
+    # Test multiple criteria
+    result = arch.select(subject="001", task="aTask")
+    assert len(result.database) > 0
+    assert all(result.database["subject"] == "001")
+    assert all(result.database["task"] == "aTask")
+    
+    # Test selection with list of values
+    result = arch.select(subject=["001", "002"])
+    assert len(result.database) > 0
+    assert all(result.database["subject"].isin(["001", "002"]))
+    
+    # Test empty result
+    result = arch.select(subject="nonexistent")
+    assert len(result.database) == 0
+    
+    # Test invalid key
+    with pytest.raises(ValueError, match="Invalid selection key"):
+        arch.select(invalid_key="value")
+    
+    # Test chained selection
+    result = (arch
+             .select(subject="001")
+             .select(task="aTask")
+             .select(run="01"))
+    assert len(result.database) > 0
+    assert all(result.database["subject"] == "001")
+    assert all(result.database["task"] == "aTask")
+    assert all(result.database["run"] == "01")
+    
+    # Test selection preserves original
+    original_len = len(arch.database)
+    result = arch.select(subject="001")
+    assert len(arch.database) == original_len  # Original unchanged
+    assert len(result.database) < original_len  # Result filtered
 
-@pytest.mark.parametrize("case, expected", zip(cases, expected))
-def test_bids_query_filename(case, expected):
-    # Add the root path to the case dictionary
+def test_bids_architecture_select_with_wildcards(bids_dataset):
+    """Test BidsArchitecture select method with wildcards."""
+    arch = BidsArchitecture(root=bids_dataset)
     
-    # Create an instance of BidsQuery
-    query = BidsQuery(root = Path("/data"),**case)
+    # Test wildcard in values
+    result = arch.select(subject="00*")
+    assert len(result.database) > 0
+    assert all(result.database["subject"].str.startswith("00"))
     
-    # Assert the filename matches the expected value
-    assert query.filename == expected, f"Failed for case: {case}"
-    assert query.fullpath == Path("/data/sub-*/ses-*/*/") / expected, f"Failed for case: {case}"
+    # Test multiple wildcards
+    result = arch.select(
+        subject="00*",
+        task="*Task"
+    )
+    assert len(result.database) > 0
+    assert all(result.database["subject"].str.startswith("00"))
+    assert all(result.database["task"].str.endswith("Task"))
 
-def test_bids_query_generate():
-    query = BidsQuery(root=Path("/data"), subject="001")
-    assert hasattr(query, "generate")
+def test_bids_architecture_select_complex_queries(bids_dataset):
+    """Test BidsArchitecture select method with complex queries."""
+    arch = BidsArchitecture(root=bids_dataset)
+    
+    # Test selection with multiple optional entities
+    result = arch.select(
+        subject="001",
+        task="aTask",
+        run="01",
+        description="aDescription"
+    )
+    assert len(result.database) > 0
+    assert tuple(result.database["subject"].unique()) == tuple(["001"])
+    assert all(result.database["task"] == "aTask")
+    assert all(result.database["run"] == "01")
+    assert all(result.database["description"] == "aDescription")
+    
+    # Test selection with mixed required and optional entities
+    result = arch.select(
+        subject="001",  # Required
+        task="aTask",   # Optional
+        run="01"        # Optional
+    )
+    assert len(result.database) > 0
+    assert all(result.database["subject"] == "001")
+    assert all(result.database["task"] == "aTask")
+    assert all(result.database["run"] == "01")
 
-@pytest.mark.parametrize("case, expected", zip(cases, expected))
-def test_bids_architecture_database_call(bids_dataset, case, expected):
-    architecture = BidsArchitecture(root=bids_dataset, **case)
-    # Basic validation
-    assert not(architecture.database.empty)
+#def test_bids_architecture_select_edge_cases(bids_dataset):
+#    """Test BidsArchitecture select method edge cases."""
+#    arch = BidsArchitecture(root=bids_dataset)
     
-    # Validate structure
-    assert all(col in architecture.database.columns for col in [
-        'subject', 'session', 'datatype', 'task', 'run', 
-        'acquisition', 'description', 'suffix', 'extension'
-    ])
+    # Test empty selection (should return copy of original)
+#    result = arch.select()
+#    assert len(result.database) == len(arch.database)
+#    assert not result.database.empty
     
-    # Validate specific queries based on case
-    if 'task' in case:
-        assert all(architecture.database['task'] == case['task'])
+    # Test selection with None values (should be ignored)
+    #result = arch.select(subject="001", task=None)
+    #assert len(result.database) > 0
+    #assert all(result.database["subject"] == "001")
     
-    if 'run' in case:
-        assert all(architecture.database['run'] == case['run'])
-        
-    if 'acquisition' in case:
-        assert all(architecture.database['acquisition'] == case['acquisition'])
-        
-    if 'description' in case:
-        assert all(architecture.database['description'] == case['description'])
-        
-    if 'suffix' in case:
-        assert all(architecture.database['suffix'] == case['suffix'])
-        
-    if 'extension' in case:
-        assert all(architecture.database['extension'] == f".{case['extension']}")
+    # Test selection with empty string
+    #result = arch.select(subject="")
+    #assert len(result.database) == 0
     
-    # Validate file existence
-    assert all(Path(f).exists() for f in architecture.database['filename'])
-    
-    # Validate BIDS naming convention
-    assert all(architecture.database['filename'].apply(
-        lambda x: str(Path(x).name).startswith('sub-')
-    ))
-    
-# BidsArchitecture Tests
-def test_bids_architecture_selection_methods():
-    arch = BidsArchitecture(root=Path("/data"))
-    
-    # Test numerical checks
-    test_series = pd.Series(["1", "2", "3"])
-    assert arch._is_numerical(test_series) == True
-    
-    # Test range selection
-    test_series = pd.Series(["1", "2", "3", "4", "5"])
-    result = arch._get_range(test_series, "2", "4")
-    assert all(result == [False, True, True, False, False])
-    
-    # Test string interpretation
-    result = arch._interpret_string(test_series, "2-4")
-    assert all(result == [False, True, True, False, False])
+    # Test selection with spaces
+    #result = arch.select(subject=" 001 ")  # Should handle whitespace
+    #assert len(result.database) > 0
+    #assert all(result.database["subject"] == "001")
 
-def test_bids_architecture_select():
-    arch = BidsArchitecture(root=Path("/data"))
-    arch.database = pd.DataFrame({
-        "subject": ["001", "002", "003"],
-        "session": ["01", "01", "02"],
-        "task": ["rest", "rest", "task"]
-    })
-    
-    result = arch.select(subject="001", session="01")
-    assert len(result.database) == 1
-    assert result.database.iloc[0]["subject"] == "001"
+

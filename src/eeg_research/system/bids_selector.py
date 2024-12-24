@@ -8,8 +8,8 @@ as individual modality. The workaround is to either do a monkey patching to the
 packages by forcing it to allow such datatype or write from scratch a separate
 class that would be less strict.
 The monkey patching is not very pythonic and it is usually a bad practice
-because of the side effect that can induce. Therefore here is a 'bids-like' data 
-handler (also simplier) which will be useful for everybody dealing with pseudo 
+because of the side effect that can induce. Therefore here is a 'bids-like' data
+handler (also simplier) which will be useful for everybody dealing with pseudo
 BIDS layout with the possibility to customize the queries.
 
 The main class to use is `BidsArchitecture` which give the architecture
@@ -23,347 +23,373 @@ from functools import cached_property, reduce
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Union
 from warnings import warn
+import re
 
 import pandas as pd
+
 
 class BidsValidationError(Exception):
     pass
 
-def contain_standard_name(key):
-    standard_names = [
-    "sub",
-    "ses",
-    "task",
-    "acq",
-    "run",
-    "record",
-    "desc",
-    ]
-    
-    
-    return any([name in key for name in standard_names])
 
-def get_full_name(key):
-    mapping = {
-    "sub":"subject",
-    "ses": "sessions",
-    "task":"task",
-    "acq":"acquisition",
-    "run": "run",
-    "recording":"recording",
-    "desc": "description",
-    }
-    return mapping.get(key)
-
-def _validate_bids_name(elements: list) -> tuple[list, list]:
-    """Helper function to validate BIDS naming convention.
+def validate_bids_file(file: Path) -> bool:
+    """Validate the BIDS filename and pathname.
     
     Args:
-        elements: List of path/filename elements to validate
+        file: Path to validate
         
     Returns:
-        tuple containing:
-        - list of indicator strings for error messages
-        - list of boolean validation results
-    """
-    indicators = []
-    element_ok = []
-    
-    for element in elements:
-        if "-" in element and has_standard_name(element.split("-")[0]):
-            indicators.append(" " * (len(element)+1))
-            element_ok.append(True)
-        else:
-            indicators.append("^" * (len(element)))
-            element_ok.append(False)
-            
-    return indicators, element_ok
-
-def validate_bids_path(path: Union[str,Path]):
-    if isinstance(path, str):
-        path = Path(path)
-    
-    if path.is_file():
-        path = path.parents[0]
+        bool: True if validation passes
         
-    elements = [os.fspath(path.parents[path_idx]) for path_idx in range(2)]
-    indicators, element_ok = _validate_bids_name(elements)
-    indicators.insert(0, " "*(len(os.fspath(path.parents[2])) + 1))
+    Raises:
+        BidsValidationError: If validation fails
+    """
+    # Define BIDS rules
+    valid_keys = {"sub", "ses", "task", "acq", "run", "recording", "desc"}
+    valid_datatype_pattern = re.compile(r"^[a-z0-9]+$")
+    key_value_pattern = re.compile(r"(?P<key>[a-zA-Z0-9]+)-(?P<value>[a-zA-Z0-9]+)")
+    path_pattern = re.compile(r"(sub|ses)-[\w\d]+")
+
+    errors = []
+
+    # Parse file structure
+    filename = os.fspath(file.name) if file.suffix else None
+    if filename:
+        bids_path_parts = file.parent.parts[-3:]
+
+        conditions = (
+            bids_path_parts[0].startswith("sub"),
+            bids_path_parts[2].startswith("ses"),
+            "-" in bids_path_parts[0],
+            "-" in bids_path_parts[2],
+        )
+        if not any(conditions):
+            raise BidsValidationError(
+                "Path does not contain valid BIDS elements (e.g., 'sub-*')."
+                "Should be in the form of"
+                "'root/sub-<label>/ses-<label>/<datatype>'"
+            )
+        datatype = file.parent.parts[-1]
+    else:
+        bids_path_parts = file.parent.parts[-2:]
+        datatype = file.parts[-1]
+
+    if datatype and not valid_datatype_pattern.match(datatype):
+        errors.append(
+            f"Invalid datatype: '{datatype}' should be a lowercase "
+            "alphanumeric string."
+        )
+
+    for part in [bids_path_parts[0], bids_path_parts[1]]:
+        if not path_pattern.match(part):
+            errors.append(
+                f"Invalid path component: '{part}' should match the pattern "
+                "'<key>-<value>' with key being 'sub' or 'ses'."
+            )
+
+    if filename:
+        name_parts = file.stem.split("_")
+
+        for i, part in enumerate(name_parts):
+            if i == len(name_parts) - 1:
+                continue
+
+            match = key_value_pattern.match(part)
+            if not match:
+                errors.append(
+                    f"Invalid format in '{part}': should be '<key>-<value>'"
+                )
+            else:
+                key = match.group("key")
+                if key not in valid_keys:
+                    errors.append(
+                        f"Invalid key '{key}': must be one of {sorted(valid_keys)}"
+                    )
     
-    if not all(element_ok):
-        message = f"Non standardized BIDS name\n{path}\n {' '.join(indicators)}"
+    path_subject = (
+        bids_path_parts[0].split('-')[1] if '-' in bids_path_parts[0] else None
+    )
+    path_session = (
+        bids_path_parts[1].split('-')[1] if '-' in bids_path_parts[2] else None
+    )
+    
+    filename_entities = {}
+    name_parts = file.stem.split('_')
+    for part in name_parts:
+        if '-' in part:
+            key, value = part.split('-', 1)
+            filename_entities[key] = value
+    
+    if path_subject and 'sub' in filename_entities:
+        if path_subject != filename_entities['sub']:
+            errors.append(
+                f"Subject mismatch: path has 'sub-{path_subject}' but "
+                f"filename has 'sub-{filename_entities['sub']}'"
+            )
+    
+    if path_session and 'ses' in filename_entities:
+        if path_session != filename_entities['ses']:
+            errors.append(
+                f"Session mismatch: path has 'ses-{path_session}' but "
+                f"filename has 'ses-{filename_entities['ses']}'"
+            )
+
+    if errors:
+        message = (
+            f"Non-standardized BIDS name\n"
+            f"{file}\n\n" + 
+            "\n".join(f"{i + 1}. {error}" for i, error in enumerate(errors))
+        )
         raise BidsValidationError(message)
 
-def validate_bids_file(file):
-    elements = os.fspath(file.name).split("_")[:-1]
-    indicators, element_ok = _validate_bids_name(elements)
-    indicators.insert(0, " "*(len(os.fspath(file.parent))))
-    
-    if not all(element_ok):
-        message = f"Non standardized BIDS name\n{file}\n {' '.join(indicators)}"
-        raise BidsValidationError(message)
+    return True
+
 
 @dataclass
 class BasePath:
-    """Base class for handling BIDS-formatted file paths and names.
+    """Base class for handling file paths.
 
-    This class provides core functionality for working with BIDS-style paths and filenames,
-    including path construction, filename parsing, and attribute management.
+    This class provides core functionality for working with paths, including
+    path construction and attribute management.
 
     Attributes:
-        root (Path | None): Root directory path of the BIDS dataset
-        subject (str | None): Subject identifier (without 'sub-' prefix)
-        session (str | None): Session identifier (without 'ses-' prefix)
-        datatype (str | None): Type of data (e.g., 'eeg', 'eyetracking', 'brainstate')
-        task (str | None): Task identifier (without 'task-' prefix)
-        acquisition (str | None): Acquisition identifier (without 'acq-' prefix)
-        run (str | None): Run number (without 'run-' prefix)
-        description (str | None): Description identifier (without 'desc-' prefix)
-        suffix (str | None): File suffix/type identifier
-        extension (str | None): File extension (e.g., '.fif', '.edf')
+        root: Root directory path
+        subject: Subject identifier
+        session: Session identifier
+        datatype: Type of data
+        suffix: File suffix/type identifier
+        extension: File extension
+    """
 
-    Methods:
-        _make_path: Constructs the BIDS directory path
-        _make_basename: Creates the BIDS-compliant filename without extension
-        parse_filename: Extracts BIDS entities from a given filename
-
-    Note:
-        This is a base class that implements core BIDS path handling functionality.
-        It's meant to be inherited by more specific BIDS handling classes.
-    """    
     root: Optional[Path] = None
     subject: Optional[str] = None
     session: Optional[str] = None
     datatype: Optional[str] = None
-    task: Optional[str] = None
-    acquisition: Optional[str] = None
-    run: Optional[str] = None
-    description: Optional[str] = None
     suffix: Optional[str] = None
     extension: Optional[str] = None
 
-    def __post_init__(self):
-        """Initialize extension format after dataclass initialization.
-        
-        Ensures extension starts with a period (.) if provided.
-        """
-        if self.extension and "." not in self.extension:
-            self.extension = "." + self.extension
+    def __post_init__(self) -> None:
+        """Ensure extension starts with a period if provided."""
+        if self.extension and not self.extension.startswith("."):
+            self.extension = f".{self.extension}"
 
-    def __str__(self):
-        """Return string representation of the BIDS path.
-        
-        Returns:
-            str: Multi-line string showing all non-private attributes and their values.
-        """
-        string_list = []
-        for attribute, value in self.__dict__.items():
-            if not "_" in attribute:
-                string_list.append(f"{attribute}: {value}")
-        return "\n".join(string_list)
-
-    def _make_path(self, absolute: bool=True) -> Path:
-        """Construct BIDS-compliant directory path.
+    def _make_path(self, absolute: bool = True) -> Path:
+        """Construct directory path.
 
         Args:
-            absolute (bool): If True and root is set, returns absolute path.
-                            If False, returns relative path.
+            absolute: If True and root is set, returns absolute path.
+                     If False, returns relative path.
 
         Returns:
-            Path: BIDS directory path (absolute or relative)
+            Path object representing the constructed path
         """
-        relative_path = Path(
-            os.path.join(
-                f"sub-{self.subject}",
-                f"ses-{self.session}", 
-                self.datatype if self.datatype is not None else "",
-            )
-        )
-        if absolute and getattr(self,"root", False) and self.root is not None:
+        components = []
+        if self.subject:
+            components.append(f"sub-{self.subject}")
+        if self.session:
+            components.append(f"ses-{self.session}")
+        if self.datatype:
+            components.append(self.datatype)
+
+        relative_path = Path(*components)
+        if absolute and self.root:
             return self.root / relative_path
-        else:
-            return relative_path
+        return relative_path
 
-    def _make_basename(self):
-        """Create BIDS-compliant filename without extension.
-        
-        Assembles filename components in correct order following BIDS specification.
-        Optional components (description, run, acquisition) are inserted if present.
+    def _make_basename(self) -> str:
+        """Create filename without extension.
 
         Returns:
-            str: BIDS-compliant filename without extension
+            Base filename constructed from available attributes
         """
-        fname_elem = [
-            f"sub-{self.subject}",
-            f"ses-{self.session}",
-            self.suffix,
-        ]
-        if self.description:
-            fname_elem.insert(2, f"desc-{self.description}")
-        if self.run:
-            fname_elem.insert(2, f"run-{self.run}")
-        if self.acquisition:
-            fname_elem.insert(2, f"acq-{self.acquisition}")
-        if self.task:
-            fname_elem.insert(2, f"task-{self.task}")
-        
-        fname_elem = [elem for elem in fname_elem if elem is not None]
-        return "_".join(fname_elem)
-
-        
-    def _check_filename(self, file: Union[str, Path]):
-        pass
-
-        
-        
-    def parse_filename(self, file: Union[str, Path]) -> Dict[str, Optional[str]]:
-        """Parse BIDS entities from filename.
-
-        Extracts BIDS entities (subject, session, task, etc.) from a BIDS-compliant 
-        filename.
-
-        Args:
-            file (Path): Path object or string containing BIDS filename to parse
-
-        Returns:
-            dict: Dictionary containing extracted BIDS entities
-        """
-        if isinstance(file, str):
-            file = Path(file)
-
-        file_parts: Dict[str, Optional[str]] = {}
-        desired_keys = ["run", "desc", "acq", "task"]
-        splitted_filename = file.stem.split("_")
-
-        if len(file.parts) > 1:
-            file_parts["datatype"] = file.parts[-2]
-        else:
-            file_parts["datatype"] = splitted_filename[-1]
-            
-        file_parts["subject"] = file.name.split("_")[0].split("-")[1]
-        file_parts["session"] = file.name.split("_")[1].split("-")[1]
-
-        for desired_key in desired_keys:
-            if desired_key in file.stem:
-                value = [
-                    part.split("-")[1]
-                    for part in splitted_filename
-                    if desired_key in part
-                ][0]
-            else:
-                value = None
-
-            if desired_key == "desc":
-                desired_key = "description"
-            elif desired_key == "acq":
-                desired_key = "acquisition"
-
-            file_parts[desired_key] = value
-
-        file_parts["suffix"] = splitted_filename[-1]
-        file_parts["extension"] = file.suffix
-
-        return file_parts
+        components = []
+        if self.subject:
+            components.append(f"sub-{self.subject}")
+        if self.session:
+            components.append(f"ses-{self.session}")
+        if self.suffix:
+            components.append(self.suffix)
+        return "_".join(components)
 
 
 @dataclass
 class BidsPath(BasePath):
-    """Class for handling BIDS paths with additional functionality.
-    
-    Extends BasePath with properties for path manipulation and file handling.
-    Provides methods to generate filenames and paths following BIDS conventions.
+    """BIDS-compliant path handler with query capabilities.
+
+    Extends BasePath with BIDS-specific functionality and query features.
+    Handles path construction, validation, and pattern matching for BIDS datasets.
 
     Attributes:
-        Inherits all attributes from BasePath
+        task: Task identifier
+        run: Run number
+        acquisition: Acquisition identifier
+        description: Description identifier
     """
-    subject: str | None = None
-    session: str | None = None
-    datatype: str | None = None
-    task: str | None = None
-    suffix: str | None = None
-    extension: str | None = None
-    root: Path | None = None
-    run: str | None = None
-    acquisition: str | None = None
-    description: str | None = None
 
-    @classmethod
-    def from_filename(cls, file: str | os.PathLike) -> 'BidsPath':
-        """Create BidsPath instance from existing BIDS filename.
-
-        Args:
-            file: Path or string of BIDS-compliant filename
-
-        Returns:
-            BidsPath: New instance populated with entities from filename
-        """
-
-        file_parts = cls.parse_filename(cls(), Path(file))
-        return cls(**file_parts)
+    task: Optional[str] = None
+    run: Optional[str] = None
+    acquisition: Optional[str] = None
+    description: Optional[str] = None
 
     def __post_init__(self) -> None:
-        """Initialize the object after __init__ has been called."""
+        """Initialize and normalize BIDS entities."""
+        # Define valid prefixes for each attribute
+        self._validate_and_normalize_entities()
         super().__post_init__()
+
+    def _validate_and_normalize_entities(self) -> None:
+        """Validate and normalize all BIDS entities."""
+        prefix_mapping = {
+            'subject': 'sub',
+            'session': 'ses',
+            'task': 'task',
+            'run': 'run',
+            'acquisition': 'acq',
+            'description': 'desc'
+        }
+        
+        for attr, prefix in prefix_mapping.items():
+            value = getattr(self, attr)
+            if value is not None and isinstance(value, str):
+                # First validate
+                if '-' in value:
+                    given_prefix = value.split('-')[0]
+                    if given_prefix != prefix:
+                        raise ValueError(
+                            f"Invalid prefix in {attr}='{value}'. "
+                            f"Expected '{prefix}-' prefix if any, got '{given_prefix}-'"
+                        )
+                # Then normalize if validation passed
+                setattr(self, attr, self._normalize_entity(prefix, value))
+
+    def _normalize_entity(self, prefix: str, value: Optional[str]) -> Optional[str]:
+        """Normalize BIDS entity value by removing prefix if present."""
+        if value is None:
+            return None
+            
+        value = value.strip()
+        prefix_pattern = f"^{prefix}-"
+        if re.match(prefix_pattern, value):
+            return value[len(prefix)+1:]
+        
+        return value
+
+    def _check_filename(self, file: Union[str, Path]) -> None:
+        """Validate BIDS naming conventions.
+
+        Args:
+            file: Path to validate
+
+        Raises:
+            BidsValidationError: If file doesn't follow BIDS conventions
+        """
+        if isinstance(file, str):
+            file = Path(file)
+        validate_bids_file(file)
+
+    def _make_basename(self) -> str:
+        """Create BIDS-compliant filename without extension.
+
+        Returns:
+            str: BIDS-compliant filename
+        """
+        components = [f"sub-{self.subject}", f"ses-{self.session}"]
+
+        # Optional entities in BIDS-specified order
+        if self.task:
+            components.append(f"task-{self.task}")
+        if self.acquisition:
+            components.append(f"acq-{self.acquisition}")
+        if self.run:
+            components.append(f"run-{self.run}")
+        if self.description:
+            components.append(f"desc-{self.description}")
+
+        if self.suffix:
+            components.append(self.suffix)
+
+        return "_".join(filter(None, components))
 
     @property
     def basename(self) -> str:
-        """Get BIDS-compliant filename without extension.
-
-        Returns:
-            str: Base filename following BIDS naming convention
-        """
-        return super()._make_basename()
+        """Get BIDS-compliant filename without extension."""
+        return self._make_basename()
 
     @property
     def filename(self) -> str:
-        """Get complete filename with extension.
-
-        Returns:
-            str: Full filename with extension
-        """
-        return self.basename + (self.extension or "")
-
-    @property
-    def absolute_path(self) -> Path:
-        """Get absolute path to file.
-
-        Returns:
-            Path: Absolute path if root is set, else relative path with warning
-        """
-        if self.root:
-            return super()._make_path(absolute=True)
-        else:
-            warn(
-                "There was no root path detected. Setting relative "
-                "path as the root path"
-            )
-            return super()._make_path(absolute=False)
-
-    @property
-    def relative_path(self) -> Path:
-        """Get path relative to root directory.
-
-        Returns:
-            Path: Relative path following BIDS folder structure
-        """
-        return super()._make_path(absolute=False)
+        """Get complete filename with extension."""
+        return f"{self.basename}{self.extension or ''}"
 
     @property
     def fullpath(self) -> Path:
-        """Get complete path including filename.
+        """Get complete path including filename."""
+        path = self._make_path(absolute=bool(self.root))
+        return path / self.filename
+
+    def match_pattern(self, pattern: str = "*") -> bool:
+        """Check if path matches given pattern.
+
+        Args:
+            pattern: Glob pattern to match against
 
         Returns:
-            Path: Full path with filename and extension
+            True if path matches pattern, False otherwise
         """
-        if getattr(self,'root', False):
-            return self.absolute_path / self.filename
-        else:
-            return self.relative_path / self.filename
+        return Path(self.filename).match(pattern)
+
+    @classmethod
+    def from_filename(cls, file: Union[str, Path]) -> "BidsPath":
+        """Create BidsPath instance from existing filename.
+
+        Args:
+            file: BIDS-compliant filename or path
+
+        Returns:
+            New BidsPath instance with normalized entities
+        """
+        if isinstance(file, str):
+            file = Path(file)
+
+        # Parse BIDS entities from filename
+        entities: Dict[str, Optional[str]] = {}
+        
+        # Extract path components
+        if len(file.parts) > 2:
+            entities["datatype"] = file.parts[-2]
+            # Already normalized since we're extracting from BIDS structure
+            entities["subject"] = file.parts[-3].split("-")[1]
+            if len(file.parts) > 3:
+                entities["session"] = file.parts[-4].split("-")[1]
+
+        # Parse filename components
+        name_parts = file.stem.split("_")
+        for part in name_parts:
+            if "-" in part:
+                key, value = part.split("-", 1)
+                # Values are already normalized since we're parsing from BIDS format
+                if key == "sub":
+                    entities["subject"] = value
+                elif key == "ses":
+                    entities["session"] = value
+                elif key == "task":
+                    entities["task"] = value
+                elif key == "acq":
+                    entities["acquisition"] = value
+                elif key == "run":
+                    entities["run"] = value
+                elif key == "desc":
+                    entities["description"] = value
+
+        entities["suffix"] = name_parts[-1]
+        entities["extension"] = file.suffix
+
+        return cls(**entities)
+
 
 @dataclass
 class BidsQuery(BidsPath):
     """Class for querying BIDS datasets using wildcards and patterns.
-    
+
     Extends BidsPath to support flexible querying of BIDS datasets using
     wildcards and patterns. Handles conversion of query parameters to
     filesystem-compatible glob patterns.
@@ -372,6 +398,7 @@ class BidsQuery(BidsPath):
         Inherits all attributes from BidsPath
         All attributes support wildcards (*) for flexible matching
     """
+
     root: Optional[Path] = None
     subject: Optional[str] = None
     session: Optional[str] = None
@@ -385,7 +412,7 @@ class BidsQuery(BidsPath):
 
     def __post_init__(self) -> None:
         """Initialize query parameters with wildcards.
-        
+
         Converts None values to wildcards and adds wildcards to existing values
         where appropriate.
         """
@@ -406,8 +433,8 @@ class BidsQuery(BidsPath):
 
         for attr in ["task", "run", "acquisition", "description"]:
             if getattr(self, attr) is not None:
-                setattr(self,attr, getattr(self, attr) + "*")
-        
+                setattr(self, attr, getattr(self, attr) + "*")
+
         return super().__post_init__()
 
     @property
@@ -417,14 +444,10 @@ class BidsQuery(BidsPath):
         Returns:
             str: Filename pattern with wildcards for matching
         """
-        potential_cases = [
-            "*_*",
-            "**",
-            "*.*"
-        ]
+        potential_cases = ["*_*", "**", "*.*"]
         filename = super().filename
         for case in potential_cases:
-            filename = filename.replace(case,"*")
+            filename = filename.replace(case, "*")
         return filename
 
     def generate(self) -> Iterator[Path]:
@@ -445,53 +468,165 @@ class BidsQuery(BidsPath):
             )
 
 
-@dataclass
-class BidsArchitecture(BidsQuery):
+class BidsArchitecture:
     """Main class for working with BIDS dataset structure.
-    
+
     Provides comprehensive functionality for querying, selecting, and reporting
-    on BIDS datasets. Supports complex queries and selections based on BIDS
-    entities.
+    on BIDS datasets. Uses composition with BidsPath for path handling.
 
     Attributes:
-        Inherits all attributes from BidsQuery
+        root (Path): Root directory of the BIDS dataset
         database (pd.DataFrame): Cached database of matching files
     """
-    
-    root: Path
-    subject: str | None = None
-    session: str | None = None
-    datatype: str | None = None
-    task: str | None = None
-    run: str | None = None
-    acquisition: str | None = None
-    description: str | None = None
-    suffix: str | None = None
-    extension: str | None = None
 
-    def __post_init__(self) -> None:  # noqa: D105
-        super().__post_init__()
-        self._db_lookup_generator = self.generate()
-    
-    def __next__(self):
-        return next(self._db_lookup_generator)
-    
-    def __iter__(self):
-        return iter(self._db_lookup_generator)
-
-
-    def __add__(self, other):  # noqa: ANN204, D105, ANN001
-        #TODO I want to design an add dunder method that can add another 
-        # architecture object to the existing one with the possibility of having
-        # different roots.
-        pass
-
-    @cached_property
-    def database(self) -> pd.DataFrame:
-        """Scan filesystem and build DataFrame of matching files.
+    def __init__(
+        self,
+        root: Path,
+        subject: Optional[str] = None,
+        session: Optional[str] = None,
+        datatype: Optional[str] = None,
+        task: Optional[str] = None,
+        run: Optional[str] = None,
+        acquisition: Optional[str] = None,
+        description: Optional[str] = None,
+        suffix: Optional[str] = None,
+        extension: Optional[str] = None,
+    ) -> None:
+        """Initialize BidsArchitecture.
 
         Args:
-            query: Glob pattern for file selection
+            root: Root directory of the BIDS dataset
+            subject: Subject identifier or pattern
+            session: Session identifier or pattern
+            datatype: Data type identifier or pattern
+            task: Task identifier or pattern
+            run: Run number or pattern
+            acquisition: Acquisition identifier or pattern
+            description: Description identifier or pattern
+            suffix: Suffix identifier or pattern
+            extension: File extension or pattern
+        """
+        self.root = root
+        self._path_handler = BidsPath(
+            root=root,
+            subject=subject or "*",
+            session=session or "*",
+            datatype=datatype or "*",
+            task=task,
+            run=run,
+            acquisition=acquisition,
+            description=description,
+            suffix=suffix or "*",
+            extension=extension or ".*",
+        )
+        self._database: Optional[pd.DataFrame] = None
+
+    @cached_property    
+    def database(self) -> pd.DataFrame:
+        """Get or create database of matching files.
+
+        Returns:
+            pd.DataFrame: Database containing all matching files and their BIDS entities
+        """
+        if self._database is None:
+            self._database = self._create_database()
+        return self._database
+    
+    def _get_unique_values(self, column: str) -> List[str]:
+        """Get sorted unique non-None values for a given column.
+        
+        Args:
+            column: Name of the database column
+            
+        Returns:
+            List[str]: Sorted list of unique non-None values
+        """
+        return sorted([elem for elem in self.database[column].unique() 
+                      if elem is not None])
+
+    @property
+    def subjects(self) -> List[str]:
+        """Get unique subject identifiers.
+        
+        Returns:
+            List[str]: Sorted list of subject IDs
+        """
+        return self._get_unique_values('subject')
+    
+    @property
+    def sessions(self) -> List[str]:
+        """Get unique session identifiers.
+        
+        Returns:
+            List[str]: Sorted list of session IDs
+        """
+        return self._get_unique_values('session')
+    
+    @property
+    def datatypes(self) -> List[str]:
+        """Get unique datatypes.
+        
+        Returns:
+            List[str]: Sorted list of datatypes
+        """
+        return self._get_unique_values('datatype')
+    
+    @property
+    def tasks(self) -> List[str]:
+        """Get unique task identifiers.
+        
+        Returns:
+            List[str]: Sorted list of task IDs
+        """
+        return self._get_unique_values('task')
+    
+    @property
+    def runs(self) -> List[str]:
+        """Get unique run numbers.
+        
+        Returns:
+            List[str]: Sorted list of run numbers
+        """
+        return self._get_unique_values('run')
+    
+    @property
+    def acquisitions(self) -> List[str]:
+        """Get unique acquisition identifiers.
+        
+        Returns:
+            List[str]: Sorted list of acquisition IDs
+        """
+        return self._get_unique_values('acquisition')
+    
+    @property
+    def descriptions(self) -> List[str]:
+        """Get unique description identifiers.
+        
+        Returns:
+            List[str]: Sorted list of description IDs
+        """
+        return self._get_unique_values('description')
+    
+    @property
+    def suffixes(self) -> List[str]:
+        """Get unique suffixes.
+        
+        Returns:
+            List[str]: Sorted list of suffixes
+        """
+        return self._get_unique_values('suffix')
+    
+    @property
+    def extensions(self) -> List[str]:
+        """Get unique file extensions.
+        
+        Returns:
+            List[str]: Sorted list of file extensions
+        """
+        return self._get_unique_values('extension')
+    
+    def _create_database(self) -> pd.DataFrame:
+        """Scan filesystem and build DataFrame of matching files.
 
         Returns:
             pd.DataFrame: DataFrame containing all matching files and their BIDS entities
@@ -513,98 +648,38 @@ class BidsArchitecture(BidsQuery):
             "filename",
         ]
 
-        data_base_dict: dict[str, list] = {key: [] for key in database_keys}
+        data: Dict[str, List[Any]] = {key: [] for key in database_keys}
 
-        for file in self.generate():
-            if 'test' in file.name.lower():
-                continue
-            bids_path = BidsPath.from_filename(file)
-            for key, value in bids_path.__dict__.items():
-                if key == "root":
-                    data_base_dict['root'].append(self.root)
-                else:
-                    data_base_dict[key].append(value)
-
-            file_stats = file.stat()
-            data_base_dict['atime'].append(int(file_stats.st_atime))
-            data_base_dict['mtime'].append(int(file_stats.st_mtime))
-            data_base_dict['ctime'].append(int(file_stats.st_ctime))
-            data_base_dict['filename'].append(file)
-
-
-        return pd.DataFrame(data_base_dict)
-    
-    def print_summary(self) -> str:
-        """Public string representation when calling print().
-
-        Returns:
-            str: String representation
-        """
-        if not getattr(self, 'database'):
-            raise Exception("No database generated. Run the `get_layout` method"\
-                " before.")
-            
-        str_list = list()
-        print(f"Results for query: {self.fullpath}")
-        for attribute in self.database.columns:
-            if attribute == "filename":
+        pattern = self._path_handler.filename
+        for file in self.root.rglob(pattern):
+            if "test" in file.name.lower():
                 continue
 
-            all_existing_values = [
-                str(val) for val in self.database[attribute].unique()
-            ]
+            try:
+                bids_path = BidsPath.from_filename(file)
+                for key, value in bids_path.__dict__.items():
+                    if key == "root":
+                        data["root"].append(self.root)
+                    else:
+                        data[key].append(value)
 
-            if len(all_existing_values) <= 4:
-                specification_str = (
-                    f"({ ', '.join([str(s) for s in all_existing_values])})"
-                )
-            else:
-                specification_str = (
-                    f"({str(all_existing_values[0])} "
-                    f"... {str(all_existing_values[-1])})"
-                )
+                file_stats = file.stat()
+                data["atime"].append(int(file_stats.st_atime))
+                data["mtime"].append(int(file_stats.st_mtime))
+                data["ctime"].append(int(file_stats.st_ctime))
+                data["filename"].append(file)
+            except BidsValidationError:
+                warn(f"Skipping invalid BIDS file: {file}")
+                continue
 
-            value_length = str(len(all_existing_values))
-
-            str_list.append(
-                f"{str(attribute).capitalize()}s: {value_length} "
-                f"{specification_str}"
-            )
-
-        all_str = f"{'\n'.join(str_list)}\nFiles: {len(self.database)}"
-        return all_str
-
-    def _standardize_input_str(self, value: str) -> str:
-        """Remove BIDS prefixes from input strings.
-
-        Standardizes inputs by removing prefixes like 'sub-', 'ses-', etc.
-
-        Args:
-            value: Input string to standardize
-
-        Returns:
-            str: Standardized string without BIDS prefixes
-        """
-        prefix_list = [
-            "sub-",
-            "ses-",
-            "task-",
-            "acq-",
-            "run-",
-            "desc-",
-        ]
-        for prefix in prefix_list:
-            if prefix in value.lower():
-                return value.replace(prefix, "")
-
-        return value
+        return pd.DataFrame(data)
 
     def _get_range(
         self,
         dataframe_column: pd.core.series.Series,
-        start: Optional[Union[int, str]] = None,
-        stop: Optional[Union[int, str]] = None
-    ) -> pd.Series:
+        start: int | str | None = None,
+        stop: int | str | None = None,
+    ) -> pd.core.series.Series:
         if isinstance(start, str):
             start = int(start)
 
@@ -622,7 +697,9 @@ class BidsArchitecture(BidsQuery):
         return (start <= dataframe_column) & (dataframe_column < stop)
 
     def _get_single_loc(
-        self, dataframe_column: pd.core.series.Series, value: str
+        self, 
+        dataframe_column: pd.core.series.Series, 
+        value: str
     ) -> pd.core.series.Series:
         locations_found = dataframe_column == value
         if not any(locations_found):
@@ -632,8 +709,9 @@ class BidsArchitecture(BidsQuery):
         return locations_found
 
     def _is_numerical(
-        self, dataframe_column: pd.Series
-    ) -> pd.Series:
+        self,
+        dataframe_column: pd.core.series.Series
+    ) -> pd.core.series.Series:
         return all(dataframe_column.apply(lambda x: str(x).isdigit()))
 
     def _interpret_string(
@@ -672,151 +750,50 @@ class BidsArchitecture(BidsQuery):
             return self._get_single_loc(dataframe_column, string)
 
     def _perform_selection(
-        self, 
-        dataframe_column: pd.Series, 
-        value: str
-    ) -> pd.Series:
+        self, dataframe_column: pd.core.series.Series, value: str
+    ) -> pd.core.series.Series:
         if self._is_numerical(dataframe_column):
             return self._interpret_string(dataframe_column, value)
         else:
             return self._get_single_loc(dataframe_column, value)
 
-    def select(
-        self, 
-        **kwargs: Dict[str, Union[str, List[str]]]
-        ) -> pd.DataFrame:
+    def select(self, **kwargs) -> "BidsArchitecture":
         """Select files from database based on BIDS entities.
 
-        Supports flexible selection using:
-        - Single values
-        - Lists of values
-        - Ranges (e.g. "1-5")
-        - Wildcards
-
         Args:
-            kwargs: key-words argument for the selection:
-                subject: Subject identifier(s)
-                session: Session identifier(s)
-                datatype: Data type identifier(s)
-                task: Task identifier(s)
-                run: Run number(s)
-                acquisition: Acquisition identifier(s)
-                description: Description identifier(s)
-                suffix: Suffix identifier(s)
-                extension: File extension(s)
+            **kwargs: Entity criteria to match (e.g., subject="001", task="rest")
 
         Returns:
-            pd.DataFrame: Selected subset of database matching criteria
+            New BidsArchitecture instance with filtered database
+        
+        Raises:
+            ValueError: If an invalid selection key is provided
         """
-        possible_arguments = [
-            "subject",
-            "session",
-            "datatype",
-            "task",
-            "run",
-            "acquisition",
-            "description",
-            "suffix",
-            "extension",
+        valid_keys = [
+            "subject", "session", "datatype", "task", "run",
+            "acquisition", "description", "suffix", "extension"
         ]
 
-        for argument_name in kwargs.keys():
-            if argument_name not in possible_arguments:
-                raise Exception(
-                    "Argument must be one of the following"
-                    f"{', '.join(possible_arguments)}"
-                )
+        # Validate keys
+        for key in kwargs:
+            if key not in valid_keys:
+                raise ValueError(f"Invalid selection key: {key}")
 
-        condition_for_select = list()
-        for name, value in kwargs.items():
+        # Create new instance
+        new_instance = copy.deepcopy(self)
+        
+        # Build combined mask for all conditions
+        mask = pd.Series(True, index=self.database.index)
+        
+        for key, value in kwargs.items():
             if value is not None:
+                if isinstance(value, list):
+                    mask &= self.database[key].isin(value)
+                elif isinstance(value, str):
+                    value = value.strip()
+                    if value:  # Skip empty strings
+                        mask &= self._perform_selection(self.database[key], value)
 
-                if hasattr(value, '__iter__'):
-                    col = self.database[name]
-
-                    if isinstance(value, str):
-                        value = [value]
-
-                    temp_selection = list()
-                    for individual_value in value:
-                        individual_value = self._standardize_input_str(individual_value)
-                        temp_selection.append(
-                            self._perform_selection(col, individual_value)
-                        )
-
-                    if len(temp_selection) > 1:
-                        temp_selection = reduce(lambda x, y: x | y, temp_selection)
-
-                    else:
-                        temp_selection = temp_selection[0]
-
-                    condition_for_select.append(temp_selection)
-
-                else:
-                    raise TypeError("Argument must be an iterable,"\
-                        f"got {type(value)} instead")
-
-        selection = reduce(lambda x, y: x & y, condition_for_select)
-        self.database = self.database.loc[selection]
-        return self
-    
-    def copy(self) -> 'BidsArchitecture':
-        """Return a shallow copy of the BidsSelector instance."""
-        return copy.copy(self)
-    
-    def report(self) -> 'BidsDescriptor':
-        """Generate report of database contents.
-
-        Returns:
-            BidsDescriptor: Reporter object with database summary
-        """
-        return BidsDescriptor(self.database)
-
-
-#TODO 
-# - Finish to write the dunder methods of BidsDescriptor.
-#
-# - Add Unix style info on files (accesed date, changed date, modified date).
-#
-# - Add possibility to check if file exist make a report like (brainstates, eeg, 
-#   eyetracking).
-#
-# - Add listing such as list sessions per subject, list runs per tasks, list tasks
-#   per subjects etc.
-#   It would be a method like: listing('session', 'subject') or listing('task', 
-#   'subject').
-#
-# - Add possibility to report what file are breaking bids and where in the filename.
-#   To do the above add a checker helper that will check if the path name and filename
-#   respect the minimum bids standard. The checker will be able to flag where the
-#   name breaks the bids in the error message. Design a custom error handling.
-#
-# - Add a print tree of the selection
-#
-# - Add possibility to ignore file from a .bidsignore file that will be in the 
-#   root folder.
-#
-# - Write the glob in RUST that will generate a json file to be read in python 
-#   and used in a dataframe (pandas or Polar)
-
-@dataclass
-class BidsDescriptor:
-    """Class for generating reports on BIDS database contents.
-    
-    Creates summary reports and provides access to unique values for each
-    BIDS entity in the database.
-
-    Attributes:
-        database (pd.DataFrame): Database of BIDS files
-        {entity}s (tuple): Unique values for each BIDS entity
-    """
-    database: pd.DataFrame
-
-    def __post_init__(self):
-        """Initialize reporter by creating entity value tuples."""
-        for column in self.database.columns:
-            setattr(self,column+"s",tuple(self.database[column].unique()))
-    
-    
-class BidsSelector:
-    pass
+        # Apply the combined mask
+        new_instance._database = self.database[mask].copy()
+        return new_instance
