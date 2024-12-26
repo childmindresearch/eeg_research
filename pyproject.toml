@@ -2,7 +2,8 @@
 name = "eeg_research"
 version = "0.1.0"
 description = "All tools and pipelines developed for eeg research"
-authors = ["Samuel Louviot <sam.louvito@gmail.com>"]
+authors = ["Dr. Samuel Louviot <sam.louvito@gmail.com>",
+"Dr. Alp Erkent <alp.erkent@childmind.org>"]
 license = "LGPL-3.0"
 readme = "README.md"
 packages = [{include = "eeg_research", from = "src"}]
