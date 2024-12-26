@@ -794,7 +794,11 @@ class BidsArchitecture:
                     if value:  # Skip empty strings
                         mask &= self._perform_selection(self.database[key], value)
         
-        delattr(new_instance, 'database')
-        setattr(new_instance, 'database', self.database[mask].copy())
+        if hasattr(new_instance, 'database'):
+            delattr(new_instance, 'database')
+        setattr(new_instance, 
+                'database', 
+                self.database[mask].copy()
+                )
         
         return new_instance
