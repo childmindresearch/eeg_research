@@ -31,6 +31,109 @@ import pandas as pd
 class BidsValidationError(Exception):
     pass
 
+def set_errors(object, value: pd.DataFrame):
+    if hasattr(object, 'errors'):
+        delattr(object, 'errors')
+    if hasattr(object, '_errors'):
+        delattr(object, '_errors')
+
+    setattr(object, '_errors', value)
+
+def set_database(object, value: pd.DataFrame):
+    if hasattr(object, 'database'):
+        delattr(object, 'database')
+    if hasattr(object, '_database'):
+        delattr(object, '_database')
+
+    setattr(object, '_database', value)
+
+def merge_error_logs(self, other):
+    """Merge error logs efficiently."""
+    if self._errors.empty and other._errors.empty:
+        return self._errors
+    
+    return pd.concat([
+        self._errors,
+        other._errors.loc[~other._errors.index.isin(self._errors.index)]
+    ], copy=False)
+
+def is_all_columns_valid(database: pd.DataFrame) -> bool:
+    valid_columns = {
+        'root',
+        'subject',
+        'session',
+        'datatype',
+        'task',
+        'run',
+        'acquisition',
+        'description',
+        'suffix',
+        'extension',
+        'atime',
+        'mtime',
+        'ctime',
+        'filename'
+                     }
+    database_columns = set(database.columns)
+    return valid_columns.issubset(database_columns)
+
+def has_all_filenames_valid(database: pd.DataFrame) -> bool:
+    return database['filename'].apply(validate_bids_file).all()
+
+def purify_database(database: pd.DataFrame) -> pd.DataFrame:
+    return database[database['filename'].apply(validate_bids_file)]
+
+def get_invalid_columns(database: pd.DataFrame) -> List[str]:
+    valid_columns = {
+        'root',
+        'subject',
+        'session',
+        'datatype',
+        'task',
+        'run',
+        'acquisition',
+        'description',
+        'suffix',
+        'extension',
+        'atime',
+        'mtime',
+        'ctime',
+        'filename'
+        }
+    database_columns = set(database.columns)
+    return list(database_columns - valid_columns)
+
+def get_invalid_filenames(database: pd.DataFrame) -> List[str]:
+    return database[~database['filename'].apply(validate_bids_file)]
+
+
+def prepare_for_operations(object1, object2):
+    """Prepare objects for set operations and validate them."""
+    conditions = (
+        isinstance(object1, BidsArchitecture),
+        isinstance(object1, pd.DataFrame),
+        isinstance(object1, set),
+        isinstance(object2, BidsArchitecture),
+        isinstance(object2, pd.DataFrame),
+        isinstance(object2, set),
+    )
+    if not any(conditions):
+        raise ValueError(f"Can't perform with {object1.__class__.__name__} and" 
+                         f" {object2.__class__.__name__}")
+    
+    if isinstance(object2, pd.DataFrame):
+        return object2.index
+    elif isinstance(object2, BidsArchitecture):
+        if not is_all_columns_valid(object2._database):
+            raise ValueError(f"{object2.__class__.__name__} has invalid columns: "
+                             f"{get_invalid_columns(object2._database)}")
+        
+        if not has_all_filenames_valid(object2._database):
+            raise ValueError(f"{object2.__class__.__name__} has invalid filenames: "
+                             f"{get_invalid_filenames(object2._database)}")
+        
+        return object2._database.index
+    return object2  # If it's already a set
 
 def validate_bids_file(file: Path) -> bool:
     """Validate the BIDS filename and pathname.
@@ -44,15 +147,21 @@ def validate_bids_file(file: Path) -> bool:
     Raises:
         BidsValidationError: If validation fails
     """
-    # Define BIDS rules
-    valid_keys = {"sub", "ses", "task", "acq", "run", "recording", "desc"}
+    valid_keys = {"sub", 
+                  "ses", 
+                  "task", 
+                  "acq", 
+                  "run", 
+                  "recording", 
+                  "desc", 
+                  "space"}
+
     valid_datatype_pattern = re.compile(r"^[a-z0-9]+$")
     key_value_pattern = re.compile(r"(?P<key>[a-zA-Z0-9]+)-(?P<value>[a-zA-Z0-9]+)")
     path_pattern = re.compile(r"(sub|ses)-[\w\d]+")
 
     errors = []
 
-    # Parse file structure
     filename = os.fspath(file.name) if file.suffix else None
     if filename:
         bids_path_parts = file.parent.parts[-3:]
@@ -110,7 +219,7 @@ def validate_bids_file(file: Path) -> bool:
         bids_path_parts[0].split('-')[1] if '-' in bids_path_parts[0] else None
     )
     path_session = (
-        bids_path_parts[1].split('-')[1] if '-' in bids_path_parts[2] else None
+        bids_path_parts[1].split('-')[1] if '-' in bids_path_parts[1] else None
     )
     
     filename_entities = {}
@@ -295,7 +404,6 @@ class BidsPath(BasePath):
         """
         components = [f"sub-{self.subject}", f"ses-{self.session}"]
 
-        # Optional entities in BIDS-specified order
         if self.task:
             components.append(f"task-{self.task}")
         if self.acquisition:
@@ -349,24 +457,20 @@ class BidsPath(BasePath):
         """
         if isinstance(file, str):
             file = Path(file)
-
-        # Parse BIDS entities from filename
+        
+        cls._check_filename(cls,file)
         entities: Dict[str, Optional[str]] = {}
         
-        # Extract path components
         if len(file.parts) > 2:
             entities["datatype"] = file.parts[-2]
-            # Already normalized since we're extracting from BIDS structure
             entities["subject"] = file.parts[-3].split("-")[1]
             if len(file.parts) > 3:
                 entities["session"] = file.parts[-4].split("-")[1]
 
-        # Parse filename components
         name_parts = file.stem.split("_")
         for part in name_parts:
             if "-" in part:
                 key, value = part.split("-", 1)
-                # Values are already normalized since we're parsing from BIDS format
                 if key == "sub":
                     entities["subject"] = value
                 elif key == "ses":
@@ -520,6 +624,88 @@ class BidsArchitecture:
             extension=extension or ".*",
         )
         self._database: Optional[pd.DataFrame] = None
+        self._errors: Optional[pd.DataFrame] = None
+    def __repr__(self) -> str:
+        if hasattr(self, '_database'):
+            representation = f"BidsArchitecture: {self._database.shape[0]} files, "\
+                             f"{(
+                                 self._errors.shape[0] 
+                                 )} errors, "\
+                             f"subjects: {len(self._database['subject'].unique())}, "\
+                             f"sessions: {len(self._database['session'].unique())}, "\
+                             f"datatypes: {len(self._database['datatype'].unique())}, "\
+                             f"tasks: {len(self._database['task'].unique())}"
+        else:
+            representation = "BidsArchitecture: No database created yet."
+        return representation
+    
+    def __str__(self) -> str:
+        return self.__repr__()
+    
+    def __len__(self) -> int:
+        return len(self.database)
+    
+    
+    def __getitem__(self, index: int) -> pd.DataFrame:
+        return self.database.iloc[index]
+    
+    def __setitem__(self, index: int, value: pd.DataFrame):
+        raise NotImplementedError("Setting items is not supported")
+    
+    def __iter__(self) -> Iterator[Path]:
+        return iter(self.database.iterrows())
+
+    def __add__(self, other: "BidsArchitecture") -> "BidsArchitecture":
+        """Union of two BidsArchitecture instances."""
+        _ = prepare_for_operations(self, other)
+        new_instance = copy.copy(self)  # Shallow copy is sufficient here
+        # Use concat with copy=False for better performance
+        set_database(new_instance, pd.concat(
+            [self._database, other._database], 
+            copy=False, 
+            verify_integrity=True
+        ))
+        set_errors(new_instance, merge_error_logs(self, other))
+        return new_instance
+    
+    def __sub__(self, other: "BidsArchitecture") -> "BidsArchitecture":
+        """Difference of two BidsArchitecture instances."""
+        indices_other = prepare_for_operations(self, other)
+        new_instance = copy.copy(self)  # Shallow copy is sufficient
+        # Use index difference directly
+        remaining_indices = self._database.index.difference(indices_other)
+        set_database(new_instance, self._database.loc[remaining_indices])
+        set_errors(new_instance, merge_error_logs(self, other))
+        return new_instance
+    
+    def __and__(self, other: "BidsArchitecture") -> "BidsArchitecture":
+        """Intersection of two BidsArchitecture instances."""
+        indices_other = prepare_for_operations(self, other)
+        new_instance = copy.copy(self)  # Shallow copy is sufficient
+        # Use index intersection directly
+        common_indices = self._database.index.intersection(indices_other)
+        set_database(new_instance, self._database.loc[common_indices])
+        set_errors(new_instance, merge_error_logs(self, other))
+        return new_instance
+    
+    def __xor__(self, other: "BidsArchitecture") -> "BidsArchitecture":
+        """Symmetric difference of two BidsArchitecture instances."""
+        indices_other = prepare_for_operations(self, other)
+        new_instance = copy.copy(self)  # Shallow copy is sufficient
+        # Use index symmetric_difference directly
+        xor_indices = self._database.index.symmetric_difference(indices_other)
+        set_database(new_instance, self._database.loc[xor_indices])
+        set_errors(new_instance, merge_error_logs(self, other))
+        return new_instance
+    
+
+
+    @classmethod
+    def from_database(cls, filename: str | Path) -> "BidsArchitecture":
+        """Create BidsArchitecture instance from existing csv database."""
+        df = pd.read_csv(filename)
+        
+        return cls
 
     @cached_property    
     def database(self) -> pd.DataFrame:
@@ -528,9 +714,18 @@ class BidsArchitecture:
         Returns:
             pd.DataFrame: Database containing all matching files and their BIDS entities
         """
-        if self._database is None:
-            self._database = self._create_database()
+        self._database = self._create_database()[0]
         return self._database
+    
+    @cached_property
+    def errors(self) -> pd.DataFrame:
+        """Get or create database of matching files.
+
+        Returns:
+            pd.DataFrame: Database containing all matching files and their BIDS entities
+        """
+        self._errors = self._create_database()[1]
+        return self._errors
     
     def _get_unique_values(self, column: str) -> List[str]:
         """Get sorted unique non-None values for a given column.
@@ -541,7 +736,7 @@ class BidsArchitecture:
         Returns:
             List[str]: Sorted list of unique non-None values
         """
-        return sorted([elem for elem in self.database[column].unique() 
+        return sorted([elem for elem in self._database[column].unique() 
                       if elem is not None])
 
     @property
@@ -625,6 +820,10 @@ class BidsArchitecture:
         """
         return self._get_unique_values('extension')
     
+    def create_database_and_error_log(self) -> "BidsArchitecture":
+        self._database, self._errors = self._create_database()
+        return self
+
     def _create_database(self) -> pd.DataFrame:
         """Scan filesystem and build DataFrame of matching files.
 
@@ -632,6 +831,7 @@ class BidsArchitecture:
             pd.DataFrame: DataFrame containing all matching files and their BIDS entities
         """
         database_keys = [
+            "inode",
             "root",
             "subject",
             "session",
@@ -649,6 +849,10 @@ class BidsArchitecture:
         ]
 
         data: Dict[str, List[Any]] = {key: [] for key in database_keys}
+        error_flags: Dict[str, List[bool]] = {'filename': [],
+                                              'error_type': [],
+                                              'error_message': [],
+                                              'inode': []}
 
         pattern = self._path_handler.filename
         for file in self.root.rglob(pattern):
@@ -664,16 +868,39 @@ class BidsArchitecture:
                         data[key].append(value)
 
                 file_stats = file.stat()
+                data["inode"].append(int(file_stats.st_ino))
                 data["atime"].append(int(file_stats.st_atime))
                 data["mtime"].append(int(file_stats.st_mtime))
                 data["ctime"].append(int(file_stats.st_ctime))
                 data["filename"].append(file)
-            except BidsValidationError:
-                warn(f"Skipping invalid BIDS file: {file}")
+
+            except Exception as e:
+                error_flags['filename'].append(file)
+                error_flags['error_type'].append(e.__class__.__name__)
+                error_flags['error_message'].append(str(e))
+                error_flags['inode'].append(file.stat().st_ino)
                 continue
 
-        return pd.DataFrame(data)
+        data_df = pd.DataFrame(
+            data,
+            index=data['inode'],
+            columns=[key for key in database_keys if key != 'inode']
+            )
+        error_df = pd.DataFrame(
+            error_flags,
+            index=error_flags['inode'],
+            columns=[key for key in error_flags.keys() if key != 'inode']
+            )
 
+        return data_df, error_df
+    
+    def print_errors_log(self):
+        if self.errors.empty:
+            print("No errors found")
+        else:
+            print(f"Number of files: {len(self.errors)}")
+            print(f"Error types: {self.errors['error_type'].unique()}")
+            
     def _get_range(
         self,
         dataframe_column: pd.core.series.Series,
@@ -757,48 +984,105 @@ class BidsArchitecture:
         else:
             return self._get_single_loc(dataframe_column, value)
 
-    def select(self, **kwargs) -> "BidsArchitecture":
-        """Select files from database based on BIDS entities.
-
-        Args:
-            **kwargs: Entity criteria to match (e.g., subject="001", task="rest")
-
-        Returns:
-            New BidsArchitecture instance with filtered database
+    def _create_mask(self, **kwargs):
+        """Create boolean mask for filtering DataFrame using index-based operations.
         
-        Raises:
-            ValueError: If an invalid selection key is provided
+        Optimized version that leverages DataFrame indexing by inode and reduces
+        function calls by operating on index sets where possible.
         """
-        valid_keys = [
+        valid_keys = {
             "subject", "session", "datatype", "task", "run",
             "acquisition", "description", "suffix", "extension"
-        ]
+        }
 
-        # Validate keys
-        for key in kwargs:
-            if key not in valid_keys:
-                raise ValueError(f"Invalid selection key: {key}")
+        # Validate keys upfront
+        invalid_keys = set(kwargs.keys()) - valid_keys
+        if invalid_keys:
+            raise ValueError(f"Invalid selection keys: {invalid_keys}")
 
-        # Create new instance
-        new_instance = copy.deepcopy(self)
-        
-        # Build combined mask for all conditions
-        mask = pd.Series(True, index=self.database.index)
+        # Start with all inodes
+        valid_inodes = set(self._database.index)
         
         for key, value in kwargs.items():
-            if value is not None:
-                if isinstance(value, list):
-                    mask &= self.database[key].isin(value)
-                elif isinstance(value, str):
-                    value = value.strip()
-                    if value:  # Skip empty strings
-                        mask &= self._perform_selection(self.database[key], value)
+            if value is None:
+                continue
+                
+            if isinstance(value, list):
+                # Get inodes matching any value in the list
+                matching_inodes = set(self._database[self._database[key].isin(value)].index)
+                valid_inodes &= matching_inodes
+                continue
+
+            if not isinstance(value, str):
+                continue
+                
+            value = value.strip()
+            if not value:
+                continue
+
+            col = self._database[key]
+            
+            # Handle numerical range queries more efficiently
+            if '-' in value and self._is_numerical(col):
+                start, stop = value.split('-')
+                if start.isdigit() or start == '*':
+                    if stop.isdigit() or stop == '*':
+                        # Convert column to numeric once
+                        col_numeric = pd.to_numeric(col, errors='coerce')
+                        
+                        start_val = int(start) if start.isdigit() else col_numeric.min()
+                        stop_val = int(stop) if stop.isdigit() else col_numeric.max()
+                        
+                        # Get inodes for rows within range
+                        range_mask = (col_numeric >= start_val) & (col_numeric <= stop_val)
+                        matching_inodes = set(self._database[range_mask].index)
+                        valid_inodes &= matching_inodes
+            
+            # Direct equality comparison using index operations
+            matching_inodes = set(self._database[col == value].index)
+            valid_inodes &= matching_inodes
+
+        # Convert final set of inodes to boolean mask
+        return self._database.index.isin(valid_inodes)
+
+    def select(self, inplace: bool = False, **kwargs) -> "BidsArchitecture":
+        """Select files from database based on BIDS entities.
         
-        if hasattr(new_instance, 'database'):
-            delattr(new_instance, 'database')
-        setattr(new_instance, 
-                'database', 
-                self.database[mask].copy()
-                )
+        Args:
+            inplace: If True, modify the current instance. If False, return a new instance.
+            **kwargs: BIDS entities to filter by
+            
+        Returns:
+            BidsArchitecture: Filtered instance
+        """
+        mask = self._create_mask(**kwargs)
+        if inplace:
+            set_database(self, self._database.loc[mask])
+            return self
         
+        new_instance = copy.deepcopy(self)
+        set_database(new_instance, self._database.loc[mask])
         return new_instance
+    
+    def remove(self, inplace: bool = False, **kwargs) -> "BidsArchitecture":
+        """Remove files from database based on BIDS entities.
+        
+        Args:
+            inplace: If True, modify the current instance. If False, return a new instance.
+            **kwargs: BIDS entities to filter by
+            
+        Returns:
+            BidsArchitecture: Filtered instance
+        """
+        mask = self._create_mask(**kwargs)
+        if inplace:
+            set_database(self, self._database.loc[~mask])
+            return self
+            
+        new_instance = copy.deepcopy(self)
+        set_database(new_instance, self._database.loc[~mask])
+        return new_instance
+    
+
+
+
