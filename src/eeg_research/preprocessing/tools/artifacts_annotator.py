@@ -335,7 +335,6 @@ ARTIFACT ANNOTATIONS STATISTICS
                             labels=labels, 
                             explode=explode)
 
-        # bar chart parameters
         artifacts_ratios = [value['ratio_from_bad'] 
                             for key,value in self.statistics.items() 
                             if "BAD" in key]
@@ -345,7 +344,6 @@ ARTIFACT ANNOTATIONS STATISTICS
         cmap = mpl.colormaps['tab20c']
         colors = cmap.colors[4:4+len(artifacts_ratios)] #type: ignore
 
-        # Adding from the top matches the legend.
         for j, (height, label) in enumerate(
             reversed([*zip(artifacts_ratios, artifacts_labels)])
             ):
