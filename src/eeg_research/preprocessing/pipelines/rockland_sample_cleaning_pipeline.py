@@ -13,10 +13,10 @@ import numpy as np
 import mne
 import pyprep
 import mne_bids
-import channels_handling as ch
 import pandas as pd
 import bids_explorer.architecture as arch
 import eeg_research.preprocessing.tools.utils as utils
+import eeg_research.preprocessing.tools.channels_handling as ch
 
 import pyxdf
 
@@ -61,7 +61,7 @@ def read_raw_xdf(filename: str | Path) -> mne.io.RawArray:
     """
     eeg, _ = pyxdf.load_xdf(filename, select_streams=[{"type": "EEG"}])
     sfreq = float(eeg[0]["info"]["nominal_srate"][0])
-    info = mne.create_info(**ch.parse_channel_names(eeg[0]), sfreq=sfreq)
+    info = mne.create_info(**ch.parse_lsl_channel_names(eeg[0]), sfreq=sfreq)
     return mne.io.RawArray(convert_in_volts(eeg[0]), info=info)
 
 

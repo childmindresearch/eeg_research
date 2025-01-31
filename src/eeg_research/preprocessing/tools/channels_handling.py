@@ -47,7 +47,7 @@ def parse_lsl_channel_names(lsl_eeg_stream: dict) -> dict[str, list[str]]:
 def set_channel_montage(
     raw: mne.io.Raw,
     montage_name: str = "easycap-M1"
-) -> tuple[mne.io.Raw, mne.channels.Montage]:
+) -> tuple[mne.io.Raw, mne.channels.DigMontage]:
     """Set the channel montage and return the montage.
 
     Args:
